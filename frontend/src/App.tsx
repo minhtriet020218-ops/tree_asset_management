@@ -4,39 +4,40 @@ import { AssetSchematicReactFlow } from './features/assets/AssetSchematicReactFl
 import type { TreeNode, Asset } from './types/asset.types';
 
 function App() {
-  // Trạng thái chuyển đổi giữa màn hình 3D (Cây thông) và 2D (Sơ đồ React Flow)
   const [currentView, setCurrentView] = useState<'3d-tree' | '2d-schematic'>('3d-tree');
   const [selectedTier, setSelectedTier] = useState<TreeNode | null>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
 
-  // Xử lý khi người dùng click vào một tầng trên cây thông 3D
+  // Xử lý khi click vào tầng 3D -> Sinh ra 3 Line, mỗi Line 6 Asset
   const handleSelectTier = (node: TreeNode) => {
     setSelectedTier(node);
     setCurrentView('2d-schematic');
 
-    // Dữ liệu mẫu (Sau này bạn có thể thay bằng API fetch từ PostgreSQL)
-    setAssets([
-      { 
-        id: 1, 
-        node_id: node.id, 
-        serial_number: 'SN-PC-001', 
-        mac_address: '00:11:22:33:44:55', 
-        hostname: 'LINE1-PLC-01', 
-        status: 'online', 
-        line_name: 'Line Sản Xuất 01', 
-        last_seen_at: '2026-11-14' 
-      },
-      { 
-        id: 2, 
-        node_id: node.id, 
-        serial_number: 'SN-PC-002', 
-        mac_address: '00:11:22:33:44:66', 
-        hostname: 'LINE1-SENSOR-02', 
-        status: 'offline', // Sẽ hiển thị cành gãy & lá đỏ héo
-        line_name: 'Line Sản Xuất 01', 
-        last_seen_at: '2026-11-12' 
-      },
-    ]);
+    // Tạo dữ liệu giả lập lớn: 3 Line, mỗi Line có 6 thiết bị
+    const mockAssets: Asset[] = [];
+    const lineNames = ['Line SMT 01', 'Line Lắp Ráp 02', 'Line Đóng Gói 03'];
+
+    let idCounter = 1;
+    lineNames.forEach((lineName, lineIdx) => {
+      for (let i = 1; i <= 6; i++) {
+        // Cho ngẫu nhiên vài máy bị offline (lá đỏ héo, cành gãy) để test giao diện
+        const isOffline = (lineIdx === 0 && i === 3) || (lineIdx === 1 && i === 5) || (lineIdx === 2 && i === 2);
+        
+        mockAssets.push({
+          id: idCounter,
+          node_id: node.id,
+          serial_number: `SN-DEV-${100 + idCounter}`,
+          mac_address: `00:11:22:33:44:${idCounter < 10 ? '0' + idCounter : idCounter}`,
+          hostname: `${lineName.replace(/\s+/g, '').toUpperCase()}-PC0${i}`,
+          status: isOffline ? 'offline' : 'online',
+          line_name: lineName,
+          last_seen_at: '2026-11-14',
+        });
+        idCounter++;
+      }
+    });
+
+    setAssets(mockAssets);
   };
 
   return (
