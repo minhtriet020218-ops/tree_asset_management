@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { ThreePineTree } from './features/tree-3d/components/ThreePineTree';
 import { AssetSchematicReactFlow } from './features/assets/AssetSchematicReactFlow';
 import { AssetInventoryModal } from './features/assets/AssetInventoryModal';
@@ -79,13 +79,9 @@ function App() {
             <AssetSchematicReactFlow 
               selectedTier={selectedTier} 
               assets={assets}
-              onBack={() => setCurrentView('3d-tree')} 
+              onBack={() => setCurrentView('3d-tree')}
+              onOpenInventory={() => setCurrentView('inventory')} // <-- Truyền hàm mở bảng kiểm kê lên header sơ đồ
             />
-            <div className="text-center mt-3">
-              <button className="btn btn-outline-primary btn-sm px-4 py-2 fw-bold" onClick={() => setCurrentView('inventory')}>
-                <i className="bi bi-list-check me-1"></i> Mở Bảng Kiểm Kê Chi Tiết Danh Sách Tài Sản
-              </button>
-            </div>
           </div>
         ) : (
           <AssetInventoryModal

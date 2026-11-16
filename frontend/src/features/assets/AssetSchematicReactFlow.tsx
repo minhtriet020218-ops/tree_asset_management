@@ -133,12 +133,14 @@ interface AssetSchematicReactFlowProps {
   selectedTier: TreeNode | null;
   assets: Asset[];
   onBack: () => void;
+  onOpenInventory: () => void;
 }
 
 export const AssetSchematicReactFlow: React.FC<AssetSchematicReactFlowProps> = ({
   selectedTier,
   assets,
   onBack,
+  onOpenInventory,
 }) => {
   const { generatedNodes, generatedEdges } = useMemo(() => {
     const nodes: Node[] = [];
@@ -288,6 +290,12 @@ export const AssetSchematicReactFlow: React.FC<AssetSchematicReactFlowProps> = (
         <span className="fw-bold text-success">
           <i className="bi bi-diagram-3-fill me-2"></i> Sơ đồ hệ thống: {selectedTier?.name}
         </span>
+        <button 
+          className="btn btn-primary btn-sm d-flex align-items-center gap-1 px-3 shadow-sm"
+          onClick={onOpenInventory}
+        >
+          <i className="bi bi-list-check"></i> Mở Bảng Kiểm Kê Tài Sản
+        </button>
         
         <div className="d-flex align-items-center flex-wrap gap-2 small bg-light px-3 py-2 rounded border">
           <span className="fw-bold text-secondary me-1">Chú thích:</span>

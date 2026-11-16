@@ -64,6 +64,19 @@ class AssetRepository {
     const result = await db.query('DELETE FROM assets WHERE id = $1 RETURNING *;', [id]);
     return result.rows[0];
   }
+
+  // Trong assetRepository.js hoặc một file sync riêng
+  async upsertDomainAsset(assetData) {
+    const query = `
+        INSERT INTO assets (hostname, status, last_seen_at)
+        VALUES ($1, 'online', CURRENT_TIMESTAMP)
+        ON CONFLICT (hostname) 
+        DO UPDATE SET status = 'online', last_seen_at = CURRENT_TIMESTAMP
+        RETURNING *;
+    `;
+    const result = await db.query(query, [assetData.hostname]);
+    return result.rows[0];
+  }
 }
 
 module.exports = new AssetRepository();
