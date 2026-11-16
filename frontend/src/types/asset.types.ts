@@ -9,9 +9,22 @@ export interface Asset {
   finance_asset_code: string;
   po_invoice: string;
   serial_number: string;
-  mac_address: string; // <-- Đã thêm lại MAC Address
+  mac_address: string;
   status: 'online' | 'offline' | 'maintenance';
   last_seen_at: string;
+  // Người dùng
+  assigned_to?: string | null;
+  staff_code?: string | null;
+  mail_user?: string | null;
+  department?: string | null;
+  // Monitor gắn vào PC nào
+  parent_asset_id?: number | null;
+}
+
+export interface AssetMeta {
+  lines: string[];
+  departments: string[];
+  categories: string[];
 }
 
 export interface TreeNode {

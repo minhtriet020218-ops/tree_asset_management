@@ -1,13 +1,28 @@
 const assetService = require('../services/assetService');
 
+function fail(res, error) {
+  console.error(error);
+  if (error.code === '23505') {
+    return res.status(409).json({ success: false, message: 'Mã tài sản / hostname / serial đã tồn tại' });
+  }
+  res.status(500).json({ success: false, message: 'Lỗi hệ thống' });
+}
+
 exports.getAssets = async (req, res) => {
   try {
-    const { node_id, status, search } = req.query;
-    const data = await assetService.getAssets(node_id, status, search);
+    const { node_id, status, search, include_children } = req.query;
+    const data = await assetService.getAssets(node_id, status, search, include_children !== 'false');
     res.json({ success: true, data });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, message: error.message });
+    fail(res, error);
+  }
+};
+
+exports.getMeta = async (req, res) => {
+  try {
+    res.json({ success: true, data: await assetService.getMeta() });
+  } catch (error) {
+    fail(res, error);
   }
 };
 
@@ -16,43 +31,34 @@ exports.createAsset = async (req, res) => {
     const data = await assetService.createAsset(req.body);
     res.status(201).json({ success: true, data });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, message: error.message });
+    fail(res, error);
   }
 };
 
 exports.updateAsset = async (req, res) => {
   try {
-    const { id } = req.params;
-    const data = await assetService.updateAsset(id, req.body);
+    const data = await assetService.updateAsset(req.params.id, req.body);
+    if (!data) return res.status(404).json({ success: false, message: 'Không tìm thấy tài sản' });
     res.json({ success: true, data });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, message: error.message });
+    fail(res, error);
   }
 };
 
 exports.deleteAsset = async (req, res) => {
   try {
-    const { id } = req.params;
-    await assetService.deleteAsset(id);
+    const deleted = await assetService.deleteAsset(req.params.id);
+    if (!deleted) return res.status(404).json({ success: false, message: 'Không tìm thấy tài sản' });
     res.json({ success: true, message: 'Asset liquidated / deleted successfully' });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, message: error.message });
+    fail(res, error);
   }
 };
 
 exports.getDashboardStats = async (req, res) => {
   try {
-    const assets = await assetService.getAssets();
-    const total = assets.length;
-    const online = assets.filter(a => a.status === 'online').length;
-    const offline = assets.filter(a => a.status === 'offline').length;
-
-    res.json({ success: true, data: { total, online, offline } });
+    res.json({ success: true, data: await assetService.getStats() });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, message: 'Server error' });
+    fail(res, error);
   }
 };

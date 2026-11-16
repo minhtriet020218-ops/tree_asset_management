@@ -1,9 +1,19 @@
 const db = require('../config/db');
+const treeRepository = require('../repositories/treeRepository');
 
 exports.getTreeNodes = async (req, res) => {
   try {
     const result = await db.query('SELECT * FROM tree_nodes ORDER BY id ASC');
     res.json({ success: true, data: result.rows });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+exports.getTreeStats = async (req, res) => {
+  try {
+    res.json({ success: true, data: await treeRepository.getStats() });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: 'Server error' });

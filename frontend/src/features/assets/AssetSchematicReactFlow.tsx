@@ -13,10 +13,11 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import type { TreeNode, Asset } from '../../types/asset.types';
+import {isMonitor, isPrinter} from './assetUtils';
 
 // --- CẤP 0: GỐC TẦNG CÂY ---
 const TierRootNode = ({ data }: { data: { label: string } }) => (
-  <div className="px-4 py-3 shadow-lg rounded-3 bg-dark text-white fw-bold border border-success text-center" style={{ minWidth: 240 }}>
+  <div className="px-4 py-3 shadow-lg rounded-3 bg-dark text-white fw-bold border border-success text-center" style={{ width: 240 }}>
     <i className="bi bi-tree-fill text-success fs-5 me-2"></i>
     <span>{data.label}</span>
     <Handle type="source" position={Position.Bottom} style={{ background: '#3498db', width: 12, height: 12 }} />
@@ -27,7 +28,7 @@ const TierRootNode = ({ data }: { data: { label: string } }) => (
 const LineNode = ({ data }: { data: { label: string; count: number } }) => (
   <div
     className="px-4 py-2.5 shadow rounded-3 text-white fw-bold text-center"
-    style={{ minWidth: 210, backgroundColor: '#2980b9', border: '2px solid #1f618d' }}
+    style={{ width: 210, backgroundColor: '#2980b9', border: '2px solid #1f618d' }}
   >
     <Handle type="target" position={Position.Top} style={{ background: '#1f618d', width: 10, height: 10 }} />
     <Handle type="source" position={Position.Bottom} style={{ background: '#4a235a', width: 10, height: 10 }} />
@@ -40,11 +41,11 @@ const LineNode = ({ data }: { data: { label: string; count: number } }) => (
   </div>
 );
 
-// --- CẤP 2: PC TRẠM THIẾT BỊ (Hiển thị đầy đủ các trường thông tin mới) ---
+// --- CẤP 2: PC / MÁY IN ---
 const PcNode = ({ data }: { data: { asset: Asset; monitorsCount: number } }) => {
   const { asset, monitorsCount } = data;
   const isOffline = asset.status === 'offline';
-  const isPrinter = asset.category.includes('Printer');
+  const printer = isPrinter(asset);
 
   return (
     <div
@@ -53,28 +54,29 @@ const PcNode = ({ data }: { data: { asset: Asset; monitorsCount: number } }) => 
       }`}
       style={{
         width: 270,
-        backgroundColor: isOffline ? '#fff5f5' : isPrinter ? '#b45309' : '#4a235a',
-        borderColor: isOffline ? '#f5c6cb' : isPrinter ? '#78350f' : '#273746',
+        backgroundColor: isOffline ? '#fff5f5' : printer ? '#b45309' : '#4a235a',
+        borderColor: isOffline ? '#f5c6cb' : printer ? '#78350f' : '#273746',
       }}
     >
       <Handle type="target" position={Position.Top} style={{ background: isOffline ? '#dc3545' : '#273746', width: 8, height: 8 }} />
       {monitorsCount > 0 && (
         <Handle type="source" position={Position.Bottom} style={{ background: isOffline ? '#dc3545' : '#2ecc71', width: 8, height: 8 }} />
       )}
-      
-      {/* Tiêu đề & Hostname */}
+
       <div className="d-flex align-items-center border-bottom pb-1 mb-1.5 border-opacity-25">
-        <i className={`bi fs-5 me-2 ${isOffline ? 'bi-exclamation-triangle-fill text-danger' : isPrinter ? 'bi-printer-fill text-warning' : 'bi-pc-display text-info'}`}></i>
-        <div className="text-truncate fw-bold" style={{ fontSize: '12px' }} title={asset.hostname}>{asset.hostname}</div>
+        <i className={`bi fs-5 me-2 ${isOffline ? 'bi-exclamation-triangle-fill text-danger' : printer ? 'bi-printer-fill text-warning' : 'bi-pc-display text-info'}`}></i>
+        <div className="text-truncate fw-bold" style={{ fontSize: '12px' }} title={asset.hostname}>
+          {asset.hostname || asset.it_asset_code}
+        </div>
       </div>
 
-      {/* Thông tin chi tiết các trường doanh nghiệp và MAC Address */}
       <div style={{ fontSize: '9.5px', lineHeight: '1.4' }} className={isOffline ? 'text-dark' : 'text-light'}>
         <div><strong className="opacity-75">IT Code:</strong> <span className="font-monospace text-warning fw-bold">{asset.it_asset_code}</span></div>
-        <div><strong className="opacity-75">Category:</strong> {asset.category}</div>
-        <div><strong className="opacity-75">Serial:</strong> <span className="font-monospace">{asset.serial_number}</span></div>
+        <div><strong className="opacity-75">Người dùng:</strong> {asset.assigned_to || '—'}{asset.department ? ` (${asset.department})` : ''}</div>
+        <div><strong className="opacity-75">Category:</strong> {asset.category || '—'}</div>
+        <div><strong className="opacity-75">Serial:</strong> <span className="font-monospace">{asset.serial_number || '—'}</span></div>
         <div><strong className="opacity-75">MAC Address:</strong> <span className="font-monospace text-info">{asset.mac_address || 'N/A'}</span></div>
-        <div><strong className="opacity-75">PO/Invoice:</strong> <span className="font-monospace">{asset.po_invoice}</span></div>
+        <div><strong className="opacity-75">PO/Invoice:</strong> <span className="font-monospace">{asset.po_invoice || '—'}</span></div>
       </div>
 
       <div className="d-flex justify-content-between align-items-center mt-2 pt-1 border-top border-opacity-25" style={{ fontSize: '9px' }}>
@@ -91,8 +93,8 @@ const PcNode = ({ data }: { data: { asset: Asset; monitorsCount: number } }) => 
   );
 };
 
-// --- CẤP 3: MONITOR ---
-const MonitorNode = ({ data }: { data: { asset: Asset; monitorIndex: number } }) => {
+// --- CẤP 3: MONITOR (tài sản thật, gắn vào PC qua parent_asset_id) ---
+const MonitorNode = ({ data }: { data: { asset: Asset; label: string } }) => {
   const asset = data.asset;
   const isOnline = asset.status === 'online';
   return (
@@ -103,16 +105,18 @@ const MonitorNode = ({ data }: { data: { asset: Asset; monitorIndex: number } })
       style={{ width: 190 }}
     >
       <Handle type="target" position={Position.Top} style={{ background: isOnline ? '#2ecc71' : '#dc3545', width: 6, height: 6 }} />
-      
+
       <div className="d-flex align-items-center border-bottom border-opacity-25 pb-1 mb-1">
         <i className={`bi me-1.5 ${isOnline ? 'bi-display-fill' : 'bi-display'}`} style={{ fontSize: '13px' }}></i>
-        <div className="fw-bold" style={{ fontSize: '11px' }}>Màn hình {data.monitorIndex}</div>
+        <div className="fw-bold text-truncate" style={{ fontSize: '11px' }} title={asset.product || data.label}>
+          {data.label}{asset.product ? ` • ${asset.product}` : ''}
+        </div>
       </div>
 
       <div style={{ fontSize: '8.5px', lineHeight: '1.3', opacity: 0.95 }}>
-        <div><strong>IT Code:</strong> <span className="font-monospace">{asset.it_asset_code}-M{data.monitorIndex}</span></div>
-        <div><strong>SN:</strong> <span className="font-monospace">{asset.serial_number}-M{data.monitorIndex}</span></div>
-        <div><strong>PO:</strong> <span className="font-monospace">{asset.po_invoice}</span></div>
+        <div><strong>IT Code:</strong> <span className="font-monospace">{asset.it_asset_code}</span></div>
+        <div><strong>SN:</strong> <span className="font-monospace">{asset.serial_number || '—'}</span></div>
+        <div><strong>PO:</strong> <span className="font-monospace">{asset.po_invoice || '—'}</span></div>
       </div>
 
       <div className="mt-1 pt-1 border-top border-opacity-25 text-end" style={{ fontSize: '8px', fontWeight: 'bold' }}>
@@ -128,6 +132,14 @@ const nodeTypes = {
   pcNode: PcNode,
   monitorNode: MonitorNode,
 };
+
+// Kích thước dùng để căn bố cục
+const PC_W = 270;
+const MON_W = 190;
+const MON_GAP = 10;
+const CENTER_X = 800;
+
+type Item = { kind: 'pc' | 'printer' | 'monitor'; asset: Asset; monitors: Asset[]; slot: number };
 
 interface AssetSchematicReactFlowProps {
   selectedTier: TreeNode | null;
@@ -146,6 +158,7 @@ export const AssetSchematicReactFlow: React.FC<AssetSchematicReactFlowProps> = (
     const nodes: Node[] = [];
     const edges: Edge[] = [];
 
+    // Gom theo line
     const lineMap = new Map<string, Asset[]>();
     assets.forEach((asset) => {
       const lineName = asset.production_line || 'Line Mặc Định';
@@ -156,7 +169,7 @@ export const AssetSchematicReactFlow: React.FC<AssetSchematicReactFlowProps> = (
     nodes.push({
       id: 'tier-root',
       type: 'tierRootNode',
-      position: { x: 800, y: 20 },
+      position: { x: CENTER_X - 120, y: 20 },
       data: { label: selectedTier?.name || 'Khu Vực Sản Xuất' },
     });
 
@@ -164,15 +177,14 @@ export const AssetSchematicReactFlow: React.FC<AssetSchematicReactFlowProps> = (
 
     Array.from(lineMap.entries()).forEach(([lineName, lineAssets], lineIdx) => {
       const lineId = `line-${lineIdx}`;
-      const lineX = 800;
+      const lineY = lineOffsetY;
 
       nodes.push({
         id: lineId,
         type: 'lineNode',
-        position: { x: lineX, y: lineOffsetY },
+        position: { x: CENTER_X - 105, y: lineY },
         data: { label: lineName, count: lineAssets.length },
       });
-
       edges.push({
         id: `e-root-${lineId}`,
         source: 'tier-root',
@@ -181,93 +193,95 @@ export const AssetSchematicReactFlow: React.FC<AssetSchematicReactFlowProps> = (
         style: { stroke: '#2980b9', strokeWidth: 4 },
       });
 
-      // Phân tách riêng PC và Máy in (Printer)
-      const pcAssets = lineAssets.filter(a => !a.category.includes('Printer'));
-      const printerAssets = lineAssets.filter(a => a.category.includes('Printer'));
+      // Phân loại thiết bị của line này bằng dữ liệu thật
+      const monitors = lineAssets.filter(isMonitor);
+      const others = lineAssets.filter((a) => !isMonitor(a));
+      const pcs = others.filter((a) => !isPrinter(a));
+      const printers = others.filter(isPrinter);
 
-      const totalItemsCount = pcAssets.length + printerAssets.length;
-      const spacingX = 310;
-      const totalLineWidth = totalItemsCount * spacingX;
-      const startX = lineX - totalLineWidth / 2 + 155;
+      const otherIds = new Set(others.map((a) => a.id));
+      const monitorsByParent = new Map<number, Asset[]>();
+      const orphanMonitors: Asset[] = [];
+      monitors.forEach((m) => {
+        if (m.parent_asset_id && otherIds.has(m.parent_asset_id)) {
+          const list = monitorsByParent.get(m.parent_asset_id) ?? [];
+          list.push(m);
+          monitorsByParent.set(m.parent_asset_id, list);
+        } else {
+          orphanMonitors.push(m); // monitor chưa gắn PC: nối thẳng vào line
+        }
+      });
 
-      let itemIdx = 0;
+      const items: Item[] = [
+        ...pcs.map((a): Item => {
+          const mons = monitorsByParent.get(a.id) ?? [];
+          return { kind: 'pc', asset: a, monitors: mons, slot: Math.max(310, mons.length * (MON_W + MON_GAP) + 20) };
+        }),
+        ...printers.map((a): Item => ({ kind: 'printer', asset: a, monitors: monitorsByParent.get(a.id) ?? [], slot: 310 })),
+        ...orphanMonitors.map((a): Item => ({ kind: 'monitor', asset: a, monitors: [], slot: MON_W + 20 })),
+      ];
 
-      // 1. Render các PC trạm và Monitor của chúng
-      pcAssets.forEach((asset) => {
-        const isOffline = asset.status === 'offline';
-        const pcId = `pc-${asset.id}`;
-        const pcX = startX + itemIdx * spacingX;
-        const pcY = lineOffsetY + 160;
-        itemIdx++;
+      const totalWidth = items.reduce((sum, it) => sum + it.slot, 0);
+      let cursor = CENTER_X - totalWidth / 2;
+      const rowY = lineY + 160;
+      const monY = rowY + 215;
 
+      items.forEach((item) => {
+        const slotStart = cursor;
+        cursor += item.slot;
+        const a = item.asset;
+        const isOffline = a.status === 'offline';
+        const lineStyle = isOffline
+          ? { stroke: '#e74c3c', strokeWidth: 3, strokeDasharray: '6,6' }
+          : { stroke: item.kind === 'pc' ? '#34495e' : '#d35400', strokeWidth: 3 };
+
+        if (item.kind === 'monitor') {
+          const id = `mon-${a.id}`;
+          nodes.push({
+            id,
+            type: 'monitorNode',
+            position: { x: slotStart + (item.slot - MON_W) / 2, y: rowY },
+            data: { asset: a, label: 'Màn hình' },
+          });
+          edges.push({ id: `e-${lineId}-${id}`, source: lineId, target: id, animated: !isOffline, style: lineStyle });
+          return;
+        }
+
+        const pcId = `${item.kind}-${a.id}`;
         nodes.push({
           id: pcId,
           type: 'pcNode',
-          position: { x: pcX, y: pcY },
-          data: { asset: asset, monitorsCount: 2 },
+          position: { x: slotStart + (item.slot - PC_W) / 2, y: rowY },
+          data: { asset: a, monitorsCount: item.monitors.length },
         });
+        edges.push({ id: `e-${lineId}-${pcId}`, source: lineId, target: pcId, animated: !isOffline, style: lineStyle });
 
-        edges.push({
-          id: `e-${lineId}-${pcId}`,
-          source: lineId,
-          target: pcId,
-          animated: !isOffline,
-          style: isOffline
-            ? { stroke: '#e74c3c', strokeWidth: 3, strokeDasharray: '6,6' }
-            : { stroke: '#34495e', strokeWidth: 3 },
-        });
-
-        // Monitor gắn với PC
-        for (let m = 1; m <= 2; m++) {
-          const monId = `mon-${asset.id}-${m}`;
-          const monX = pcX + (m === 1 ? -50 : 50);
-          const monY = pcY + 180;
-
+        // Monitor thật của PC này, căn giữa phía dưới
+        const n = item.monitors.length;
+        const groupW = n * MON_W + (n - 1) * MON_GAP;
+        const groupStart = slotStart + (item.slot - groupW) / 2;
+        item.monitors.forEach((m, idx) => {
+          const monId = `mon-${m.id}`;
           nodes.push({
             id: monId,
             type: 'monitorNode',
-            position: { x: monX, y: monY },
-            data: { asset: asset, monitorIndex: m },
+            position: { x: groupStart + idx * (MON_W + MON_GAP), y: monY },
+            data: { asset: m, label: `Màn hình ${idx + 1}` },
           });
-
           edges.push({
             id: `e-${pcId}-${monId}`,
             source: pcId,
             target: monId,
-            style: isOffline
-              ? { stroke: '#e74c3c', strokeWidth: 3, strokeDasharray: '6,6' }
-              : { stroke: '#2ecc71', strokeWidth: 2.5 },
+            style:
+              m.status === 'online'
+                ? { stroke: '#2ecc71', strokeWidth: 2.5 }
+                : { stroke: '#e74c3c', strokeWidth: 3, strokeDasharray: '6,6' },
           });
-        }
-      });
-
-      // 2. Render Máy in (Printer) độc lập trên Line (Không bị gắn vào màn hình)
-      printerAssets.forEach((printer) => {
-        const isOffline = printer.status === 'offline';
-        const printerId = `printer-${printer.id}`;
-        const printerX = startX + itemIdx * spacingX;
-        const printerY = lineOffsetY + 160;
-        itemIdx++;
-
-        nodes.push({
-          id: printerId,
-          type: 'pcNode', // Hoặc tạo 1 node printer riêng nếu muốn
-          position: { x: printerX, y: printerY },
-          data: { asset: printer, monitorsCount: 0 },
-        });
-
-        edges.push({
-          id: `e-${lineId}-${printerId}`,
-          source: lineId,
-          target: printerId,
-          animated: !isOffline,
-          style: isOffline
-            ? { stroke: '#e74c3c', strokeWidth: 3, strokeDasharray: '6,6' }
-            : { stroke: '#d35400', strokeWidth: 3 }, // Dây màu cam cho thiết bị ngoại vi/máy in
         });
       });
 
-      lineOffsetY += 520;
+      const hasMonitorRow = items.some((it) => it.monitors.length > 0);
+      lineOffsetY += hasMonitorRow ? 620 : 400;
     });
 
     return { generatedNodes: nodes, generatedEdges: edges };
@@ -290,13 +304,13 @@ export const AssetSchematicReactFlow: React.FC<AssetSchematicReactFlowProps> = (
         <span className="fw-bold text-success">
           <i className="bi bi-diagram-3-fill me-2"></i> Sơ đồ hệ thống: {selectedTier?.name}
         </span>
-        <button 
+        <button
           className="btn btn-primary btn-sm d-flex align-items-center gap-1 px-3 shadow-sm"
           onClick={onOpenInventory}
         >
           <i className="bi bi-list-check"></i> Mở Bảng Kiểm Kê Tài Sản
         </button>
-        
+
         <div className="d-flex align-items-center flex-wrap gap-2 small bg-light px-3 py-2 rounded border">
           <span className="fw-bold text-secondary me-1">Chú thích:</span>
           <span className="badge" style={{ backgroundColor: '#2980b9' }}>Production Line</span>

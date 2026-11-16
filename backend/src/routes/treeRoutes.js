@@ -3,6 +3,7 @@ const router = express.Router();
 const treeController = require('../controllers/treeController');
 
 router.get('/', treeController.getTreeNodes);
+router.get('/stats', treeController.getTreeStats);
 router.post('/', treeController.createTreeNode);
 
 module.exports = router;
