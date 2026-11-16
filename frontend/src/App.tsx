@@ -1,64 +1,72 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ThreePineTree } from './features/tree-3d/components/ThreePineTree';
 import { AssetSchematicReactFlow } from './features/assets/AssetSchematicReactFlow';
+import { AssetInventoryModal } from './features/assets/AssetInventoryModal';
+import { assetService } from './services/assetService';
 import type { TreeNode, Asset } from './types/asset.types';
 
 function App() {
-  const [currentView, setCurrentView] = useState<'3d-tree' | '2d-schematic'>('3d-tree');
+  const [currentView, setCurrentView] = useState<'3d-tree' | '2d-schematic' | 'inventory'>('3d-tree');
   const [selectedTier, setSelectedTier] = useState<TreeNode | null>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
 
-  // Xử lý khi click vào tầng 3D -> Sinh ra 3 Line, mỗi Line 6 Asset
-  const handleSelectTier = (node: TreeNode) => {
+  // Khi click chọn tầng trên cây 3D -> Gọi API lấy danh sách tài sản thực tế từ Database theo node_id
+  const handleSelectTier = async (node: TreeNode) => {
     setSelectedTier(node);
     setCurrentView('2d-schematic');
+    try {
+      const data = await assetService.getAssets(node.id);
+      setAssets(data);
+    } catch (error) {
+      console.error("Lỗi khi tải danh sách tài sản từ API:", error);
+    }
+  };
 
-    // Tạo dữ liệu giả lập lớn: 3 Line, mỗi Line có 6 thiết bị
-    const mockAssets: Asset[] = [];
-    const lineNames = ['Line SMT 01', 'Line Lắp Ráp 02', 'Line Đóng Gói 03'];
+  const handleAddAsset = async (newAsset: Partial<Asset>) => {
+    try {
+      const created = await assetService.createAsset({ ...newAsset, node_id: selectedTier?.id });
+      setAssets([created, ...assets]);
+    } catch (error) {
+      console.error("Lỗi thêm tài sản:", error);
+    }
+  };
 
-    let idCounter = 1;
-    lineNames.forEach((lineName, lineIdx) => {
-      for (let i = 1; i <= 6; i++) {
-        // Cho ngẫu nhiên vài máy bị offline (lá đỏ héo, cành gãy) để test giao diện
-        const isOffline = (lineIdx === 0 && i === 3) || (lineIdx === 1 && i === 5) || (lineIdx === 2 && i === 2);
-        
-        mockAssets.push({
-          id: idCounter,
-          node_id: node.id,
-          serial_number: `SN-DEV-${100 + idCounter}`,
-          mac_address: `00:11:22:33:44:${idCounter < 10 ? '0' + idCounter : idCounter}`,
-          hostname: `${lineName.replace(/\s+/g, '').toUpperCase()}-PC0${i}`,
-          status: isOffline ? 'offline' : 'online',
-          line_name: lineName,
-          last_seen_at: '2026-11-14',
-        });
-        idCounter++;
+  const handleUpdateAsset = async (updatedAsset: Asset) => {
+    try {
+      const updated = await assetService.updateAsset(updatedAsset.id, updatedAsset);
+      setAssets(assets.map((a) => (a.id === updated.id ? updated : a)));
+    } catch (error) {
+      console.error("Lỗi cập nhật tài sản:", error);
+    }
+  };
+
+  const handleDeleteAssets = async (assetIds: number[]) => {
+    try {
+      for (const id of assetIds) {
+        await assetService.deleteAsset(id);
       }
-    });
-
-    setAssets(mockAssets);
+      setAssets(assets.filter((a) => !assetIds.includes(a.id)));
+    } catch (error) {
+      console.error("Lỗi xóa/thanh lý tài sản:", error);
+    }
   };
 
   return (
     <div className="min-vh-100 bg-light pb-5">
-      {/* Thanh tiêu đề hệ thống */}
-      <nav className="navbar navbar-dark bg-dark shadow-sm px-4 mb-4">
+      <nav className="navbar navbar-dark bg-dark shadow-sm px-4 mb-4 d-flex justify-content-between">
         <span className="navbar-brand mb-0 h1">
           <i className="bi bi-tree-fill text-success me-2"></i> 
-          Hệ Thống Quản Lý Tài Sản (3D Pine Tree & React Flow Eco-Schematic)
+          Hệ Thống Quản Lý Tài Sản Doanh Nghiệp (PostgreSQL & React Flow)
         </span>
       </nav>
 
       <div className="container-fluid px-4">
         {currentView === '3d-tree' ? (
-          /* MÀN HÌNH 1: CÂY THÔNG 3D PHÂN TẦNG */
           <div className="row justify-content-center">
             <div className="col-lg-7">
               <div className="card shadow-sm border-0">
-                <div className="card-header bg-white fw-bold py-3 text-success d-flex justify-content-between align-items-center">
-                  <span><i className="bi bi-box-seam me-2"></i> Mô Hình Cây Thông 3D (Phân tầng quản lý)</span>
-                  <span className="badge bg-success">Click vào tầng để xem sơ đồ 2D</span>
+                <div className="card-header bg-white fw-bold py-3 text-success">
+                  <i className="bi bi-box-seam me-2"></i> Mô Hình Cây Thông 3D (Phân tầng quản lý)
                 </div>
                 <div className="card-body p-0 bg-white rounded-bottom">
                   <ThreePineTree onSelectTier={handleSelectTier} />
@@ -66,15 +74,28 @@ function App() {
               </div>
             </div>
           </div>
-        ) : (
-          /* MÀN HÌNH 2: SƠ ĐỒ SINH THÁI 2D (REACT FLOW) */
+        ) : currentView === '2d-schematic' ? (
           <div>
             <AssetSchematicReactFlow 
               selectedTier={selectedTier} 
               assets={assets}
               onBack={() => setCurrentView('3d-tree')} 
             />
+            <div className="text-center mt-3">
+              <button className="btn btn-outline-primary btn-sm px-4 py-2 fw-bold" onClick={() => setCurrentView('inventory')}>
+                <i className="bi bi-list-check me-1"></i> Mở Bảng Kiểm Kê Chi Tiết Danh Sách Tài Sản
+              </button>
+            </div>
           </div>
+        ) : (
+          <AssetInventoryModal
+            selectedTier={selectedTier}
+            assets={assets}
+            onBack={() => setCurrentView('2d-schematic')}
+            onAddAsset={handleAddAsset}
+            onUpdateAsset={handleUpdateAsset}
+            onDeleteAssets={handleDeleteAssets}
+          />
         )}
       </div>
     </div>
