@@ -1,19 +1,19 @@
 import { useState } from 'react';
 import { ThreePineTree } from './features/tree-3d/components/ThreePineTree';
-import { AssetSchematicReactFlow } from './features/assets/AssetSchematicReactFlow';
+import { AssetSchematic3D } from './features/assets/AssetSchematic3D';
 import { AssetInventoryModal } from './features/assets/AssetInventoryModal';
 import { assetService } from './services/assetService';
 import type { TreeNode, Asset } from './types/asset.types';
 
 function App() {
-  const [currentView, setCurrentView] = useState<'3d-tree' | '2d-schematic' | 'inventory'>('3d-tree');
+  const [currentView, setCurrentView] = useState<'3d-tree' | 'schematic' | 'inventory'>('3d-tree');
   const [selectedTier, setSelectedTier] = useState<TreeNode | null>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
 
   // Khi click chọn tầng trên cây 3D -> Gọi API lấy danh sách tài sản thực tế từ Database theo node_id
   const handleSelectTier = async (node: TreeNode) => {
     setSelectedTier(node);
-    setCurrentView('2d-schematic');
+    setCurrentView('schematic');
     try {
       const data = await assetService.getAssets(node.id);
       setAssets(data);
@@ -55,8 +55,8 @@ function App() {
     <div className="min-vh-100 bg-light pb-5">
       <nav className="navbar navbar-dark bg-dark shadow-sm px-4 mb-4 d-flex justify-content-between">
         <span className="navbar-brand mb-0 h1">
-          <i className="bi bi-tree-fill text-success me-2"></i> 
-          Hệ Thống Quản Lý Tài Sản Doanh Nghiệp (PostgreSQL & React Flow)
+          <i className="bi bi-tree-fill text-success me-2"></i>
+          Hệ Thống Quản Lý Tài Sản Doanh Nghiệp (PostgreSQL & Three.js)
         </span>
       </nav>
 
@@ -74,20 +74,20 @@ function App() {
               </div>
             </div>
           </div>
-        ) : currentView === '2d-schematic' ? (
+        ) : currentView === 'schematic' ? (
           <div>
-            <AssetSchematicReactFlow 
-              selectedTier={selectedTier} 
+            <AssetSchematic3D
+              selectedTier={selectedTier}
               assets={assets}
               onBack={() => setCurrentView('3d-tree')}
-              onOpenInventory={() => setCurrentView('inventory')} // <-- Truyền hàm mở bảng kiểm kê lên header sơ đồ
+              onOpenInventory={() => setCurrentView('inventory')}
             />
           </div>
         ) : (
           <AssetInventoryModal
             selectedTier={selectedTier}
             assets={assets}
-            onBack={() => setCurrentView('2d-schematic')}
+            onBack={() => setCurrentView('schematic')}
             onAddAsset={handleAddAsset}
             onUpdateAsset={handleUpdateAsset}
             onDeleteAssets={handleDeleteAssets}
