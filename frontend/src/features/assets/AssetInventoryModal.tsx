@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { TreeNode, Asset, AssetMeta } from '../../types/asset.types';
 import { assetService } from '../../services/assetService';
-import { isMonitor } from './assetUtils';
+import { isMonitor, isMuted } from './assetUtils';
 import { AssetMaintenanceModal } from './assetMaintenanceModal';
 
 interface AssetInventoryProps {
@@ -42,7 +42,6 @@ const emptyForm = (lineName: string): Partial<Asset> => ({
   mail_user: '',
   department: '',
   parent_asset_id: null,
-  status: 'online',
 });
 
 export const AssetInventoryModal: React.FC<AssetInventoryProps> = ({
@@ -135,7 +134,7 @@ export const AssetInventoryModal: React.FC<AssetInventoryProps> = ({
       alert('Vui lòng chọn ít nhất 1 tài sản để thanh lý/xóa!');
       return;
     }
-    if (window.confirm(`Bạn có chắc chắn muốn thanh lý/xóa ${selectedAssetIds.length} tài sản đã chọn không?`)) {
+    if (window.confirm(`Thanh lý ${selectedAssetIds.length} tài sản đã chọn? Tài sản sẽ bị ẩn khỏi danh sách và không còn được giám sát / cảnh báo.`)) {
       onDeleteAssets(selectedAssetIds);
       setSelectedAssetIds([]);
     }
@@ -300,11 +299,15 @@ export const AssetInventoryModal: React.FC<AssetInventoryProps> = ({
                     <td><span className="font-monospace text-secondary">{asset.mac_address || 'N/A'}</span></td>
                     <td>
                       {asset.status === 'online' ? (
-                        <span className="badge bg-success px-2 py-1">In Use</span>
-                      ) : asset.status === 'maintenance' ? (
-                        <span className="badge bg-warning text-dark px-2 py-1">Maintenance</span>
+                        <span className="badge bg-success px-2 py-1">Online</span>
                       ) : (
                         <span className="badge bg-danger px-2 py-1">Offline</span>
+                      )}
+                      {isMuted(asset) && (
+                        <i
+                          className="bi bi-bell-slash text-muted ms-2"
+                          title={`Đang tắt cảnh báo offline đến ${new Date(asset.alerts_muted_until ?? '').toLocaleString('vi-VN')}`}
+                        ></i>
                       )}
                     </td>
                     <td className="fw-bold">{asset.assigned_to || <span className="text-muted fw-normal">—</span>}</td>
@@ -337,7 +340,11 @@ export const AssetInventoryModal: React.FC<AssetInventoryProps> = ({
                   {textField('Asset Code', 'it_asset_code', { placeholder: 'Để trống để hệ thống tự tạo' })}
                   {textField('Staff Code', 'staff_code')}
 
-                  {textField('Hostname', 'hostname', { required: !formIsMonitor })}
+                  {textField('Hostname', 'hostname', {
+                    placeholder: formIsMonitor
+                      ? 'Màn hình không cần hostname'
+                      : 'Để trống: hệ thống tự đặt (VD: HCM26-SMT01-001)',
+                  })}
                   {textField('Assigned To', 'assigned_to')}
 
                   {textField('Category', 'category', { list: 'dl-categories' })}
@@ -351,16 +358,16 @@ export const AssetInventoryModal: React.FC<AssetInventoryProps> = ({
 
                   {textField('PO/Invoice', 'po_invoice')}
                   <div className="col-md-6">
-                    <label className="form-label small fw-bold">Status</label>
-                    <select
-                      className="form-select"
-                      value={formData.status || 'online'}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, status: e.target.value as Asset['status'] }))}
-                    >
-                      <option value="online">In Use (Online)</option>
-                      <option value="offline">Offline</option>
-                      <option value="maintenance">Maintenance</option>
-                    </select>
+                    <label className="form-label small fw-bold">Trạng thái mạng</label>
+                    <input
+                      className="form-control"
+                      disabled
+                      value={
+                        isEditing
+                          ? formData.status === 'online' ? 'Online' : 'Offline'
+                          : 'Tự động (hệ thống kiểm tra mỗi 5 phút)'
+                      }
+                    />
                   </div>
 
                   {textField('Production Line', 'production_line', { list: 'dl-lines' })}

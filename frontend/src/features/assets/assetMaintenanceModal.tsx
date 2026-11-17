@@ -35,7 +35,7 @@ export const AssetMaintenanceModal = ({ asset, onClose, onChanged }: Props) => {
   const [description, setDescription] = useState('');
   const [performedBy, setPerformedBy] = useState('');
   const [performedAt, setPerformedAt] = useState('');
-  const [setStatus, setSetStatus] = useState<'' | 'maintenance' | 'online'>('');
+  const [muteHours, setMuteHours] = useState<number | ''>('');
 
   const load = useCallback(async () => {
     try {
@@ -76,12 +76,12 @@ export const AssetMaintenanceModal = ({ asset, onClose, onChanged }: Props) => {
         description: description.trim(),
         performed_by: performedBy.trim() || undefined,
         performed_at: performedAt ? new Date(performedAt).toISOString() : undefined,
-        set_status: setStatus || undefined,
+        mute_hours: muteHours || undefined,
       });
       setDescription('');
       setPerformedBy('');
       setPerformedAt('');
-      setSetStatus('');
+      setMuteHours('');
       await load();
       onChanged?.();
     } catch (err) {
@@ -157,16 +157,19 @@ export const AssetMaintenanceModal = ({ asset, onClose, onChanged }: Props) => {
                 />
               </div>
               <div className="col-md-8">
-                <label className="form-label small fw-bold">Trạng thái thiết bị</label>
+                <label className="form-label small fw-bold">Cảnh báo offline</label>
                 <select
                   className="form-select"
-                  value={setStatus}
-                  onChange={(e) => setSetStatus(e.target.value as '' | 'maintenance' | 'online')}
+                  value={muteHours}
+                  onChange={(e) => setMuteHours(e.target.value ? Number(e.target.value) : '')}
                 >
                   <option value="">Giữ nguyên</option>
-                  <option value="maintenance">Chuyển sang Bảo trì (tạm dừng cảnh báo offline)</option>
-                  <option value="online">Đã xong, đánh dấu Online (hệ thống sẽ kiểm tra lại)</option>
+                  <option value={4}>Tạm tắt 4 giờ</option>
+                  <option value={24}>Tạm tắt 1 ngày</option>
+                  <option value={72}>Tạm tắt 3 ngày</option>
+                  <option value={168}>Tạm tắt 7 ngày</option>
                 </select>
+                <div className="form-text">Tự bật lại khi máy online. Trạng thái online/offline vẫn do hệ thống kiểm tra.</div>
               </div>
               <div className="col-md-4 d-flex align-items-end">
                 <button type="submit" className="btn btn-primary w-100" disabled={saving}>

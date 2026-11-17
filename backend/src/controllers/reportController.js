@@ -2,7 +2,7 @@ const ExcelJS = require('exceljs');
 const db = require('../config/db');
 const assetRepository = require('../repositories/assetRepository');
 
-const VALID_STATUS = ['online', 'offline', 'maintenance'];
+const VALID_STATUS = ['online', 'offline'];
 
 // Chặn Excel formula injection: ô bắt đầu bằng = + - @ (và không phải số) sẽ bị Excel hiểu là công thức
 const safe = (v) => {

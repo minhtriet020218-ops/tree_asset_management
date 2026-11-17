@@ -1,6 +1,10 @@
 const assetService = require('../services/assetService');
 
 function fail(res, error) {
+  // Lỗi dữ liệu đầu vào (vd: node chưa có code để đặt hostname) -> 400 kèm lý do cho người dùng
+  if (error.status === 400 || error.code === '22023') {
+    return res.status(400).json({ success: false, message: error.message });
+  }
   console.error(error);
   if (error.code === '23505') {
     return res.status(409).json({ success: false, message: 'Mã tài sản / hostname / serial đã tồn tại' });

@@ -24,6 +24,6 @@ export interface MaintenanceInput {
   description: string;
   performed_by?: string;
   performed_at?: string; // ISO
-  /** Đổi luôn trạng thái thiết bị khi ghi lịch sử */
-  set_status?: 'maintenance' | 'online';
+  /** Tắt cảnh báo offline của thiết bị trong N giờ (không đổi online/offline thật; tự hết khi máy online lại) */
+  mute_hours?: number;
 }

@@ -274,12 +274,6 @@ export const ThreePineTree: React.FC<ThreePineTreeProps> = ({ onSelectTier }) =>
             <span>🔴 Đang Offline:</span>
             <span className="fw-bold">{tooltip.node.offline}</span>
           </div>
-          {tooltip.node.maintenance > 0 && (
-            <div className="d-flex justify-content-between text-warning">
-              <span>🛠 Bảo trì:</span>
-              <span className="fw-bold">{tooltip.node.maintenance}</span>
-            </div>
-          )}
         </div>
       )}
 

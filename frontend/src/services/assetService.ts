@@ -76,7 +76,7 @@ export const assetService = {
     await apiClient.delete(`/assets/${id}`);
   },
 
-  getDashboardStats: async (): Promise<{ total: number; online: number; offline: number; maintenance: number }> => {
+  getDashboardStats: async (): Promise<{ total: number; online: number; offline: number }> => {
     const response = await apiClient.get('/assets/dashboard/stats');
     return response.data.data;
   },

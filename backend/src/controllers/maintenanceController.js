@@ -1,6 +1,6 @@
 const repo = require('../repositories/maintenanceRepository');
 
-const SET_STATUSES = ['maintenance', 'online'];
+const MAX_MUTE_HOURS = 24 * 30; // tắt cảnh báo tối đa 30 ngày
 const isId = (v) => /^\d+$/.test(String(v));
 const text = (v) => (typeof v === 'string' ? v.trim() : '');
 
@@ -30,8 +30,14 @@ exports.create = async (req, res) => {
   if (!description) return bad('Vui lòng nhập nội dung bảo trì');
   if (description.length > 2000) return bad('Nội dung tối đa 2000 ký tự');
   if (performedBy.length > 200) return bad('Người thực hiện tối đa 200 ký tự');
-  if (b.set_status && !SET_STATUSES.includes(b.set_status)) {
-    return bad(`set_status phải là một trong: ${SET_STATUSES.join(', ')}`);
+
+  let muteHours = null;
+  if (b.mute_hours !== undefined && b.mute_hours !== null && b.mute_hours !== '') {
+    const h = Number(b.mute_hours);
+    if (!Number.isInteger(h) || h < 1 || h > MAX_MUTE_HOURS) {
+      return bad(`mute_hours phải là số nguyên từ 1 đến ${MAX_MUTE_HOURS}`);
+    }
+    muteHours = h;
   }
 
   let performedAt = null;
@@ -47,7 +53,7 @@ exports.create = async (req, res) => {
       description,
       performed_by: performedBy,
       performed_at: performedAt,
-      set_status: b.set_status || null,
+      mute_hours: muteHours,
     });
     if (!data) return res.status(404).json({ success: false, message: 'Không tìm thấy tài sản' });
     res.status(201).json({ success: true, data });

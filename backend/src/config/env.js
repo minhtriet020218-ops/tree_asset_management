@@ -51,6 +51,8 @@ module.exports = {
   alerts: {
     enabled: Boolean(teamsWebhook) || emailConfigured,
     offlineAfterMin: Math.max(1, num(process.env.ALERT_OFFLINE_MINUTES, 60)), // offline bao lâu thì báo
+    // máy mới tạo trên giao diện được tắt cảnh báo offline N ngày để IT kịp đổi tên máy thật + join AD
+    newAssetGraceDays: Math.max(0, num(process.env.NEW_ASSET_GRACE_DAYS, 7)),
     repeatHours: Math.max(0, num(process.env.ALERT_REPEAT_HOURS, 24)),         // nhắc lại sau X giờ nếu vẫn offline (0 = không nhắc)
     teamsWebhook,
     email: {

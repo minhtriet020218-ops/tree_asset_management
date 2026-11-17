@@ -5,5 +5,4 @@ export interface TreeNodeStats extends TreeNode {
   total: number;
   online: number;
   offline: number;
-  maintenance: number;
 }

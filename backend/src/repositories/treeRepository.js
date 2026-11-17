@@ -13,12 +13,12 @@ class TreeRepository {
       SELECT n.id, n.parent_id, n.name, n.code, n.node_type, n.description,
              COUNT(a.id)::int                                          AS total,
              COUNT(a.id) FILTER (WHERE a.status = 'online')::int       AS online,
-             COUNT(a.id) FILTER (WHERE a.status = 'offline')::int      AS offline,
-             COUNT(a.id) FILTER (WHERE a.status = 'maintenance')::int  AS maintenance
+             COUNT(a.id) FILTER (WHERE a.status = 'offline')::int      AS offline
       FROM tree_nodes n
       LEFT JOIN sub s ON s.root_id = n.id
       LEFT JOIN assets a
              ON a.node_id = s.node_id
+            AND a.liquidated_at IS NULL
             AND COALESCE(a.category, '') NOT ILIKE '%monitor%'
       GROUP BY n.id
       ORDER BY n.id;

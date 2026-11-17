@@ -4,10 +4,13 @@ const env = require('../config/env');
 const cfg = env.alerts;
 const MAX_LISTED = 25; // tối đa số máy liệt kê trong 1 tin, phần còn lại ghi "và N thiết bị khác"
 
-// Chỉ cảnh báo máy thật: bỏ Monitor (đi theo PC), máy dữ liệu mẫu (is_demo), máy đã bị vô hiệu trong AD
+// Chỉ cảnh báo máy thật: bỏ Monitor (đi theo PC), máy dữ liệu mẫu (is_demo), máy đã bị vô hiệu trong AD,
+// máy đã thanh lý và máy đang được tắt cảnh báo tạm thời (alerts_muted_until)
 const ALERTABLE = `
   COALESCE(a.category, '') NOT ILIKE '%monitor%'
   AND NOT a.is_demo
+  AND a.liquidated_at IS NULL
+  AND (a.alerts_muted_until IS NULL OR a.alerts_muted_until <= NOW())
   AND a.ad_enabled IS DISTINCT FROM FALSE`;
 
 const esc = (s) =>
@@ -147,7 +150,7 @@ class AlertService {
       out.recovered = rec.rows.length;
     }
 
-    // 3) Dọn mốc của máy không còn offline (vd: chuyển sang bảo trì).
+    // 3) Dọn mốc của máy không còn offline (vd: online lại trước khi kịp bị báo).
     //    Nếu bước 2 gửi lỗi thì đã ném lỗi ra ngoài trước khi tới đây, lượt sau (5 phút) sẽ tự thử lại.
     await db.query(
       `UPDATE assets SET offline_since = NULL, offline_alerted_at = NULL

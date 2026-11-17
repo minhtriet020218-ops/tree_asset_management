@@ -65,7 +65,7 @@ const PcNode = ({ data }: { data: { asset: Asset; monitorsCount: number } }) => 
 
       <div className="d-flex align-items-center border-bottom pb-1 mb-1.5 border-opacity-25">
         <i className={`bi fs-5 me-2 ${isOffline ? 'bi-exclamation-triangle-fill text-danger' : printer ? 'bi-printer-fill text-warning' : 'bi-pc-display text-info'}`}></i>
-        <div className="text-truncate fw-bold" style={{ fontSize: '12px' }} title={asset.hostname}>
+        <div className="text-truncate fw-bold" style={{ fontSize: '12px' }} title={asset.hostname ?? undefined}>
           {asset.hostname || asset.it_asset_code}
         </div>
       </div>
