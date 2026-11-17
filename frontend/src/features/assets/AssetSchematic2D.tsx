@@ -119,7 +119,7 @@ export const AssetSchematic2D: React.FC<AssetSchematic2DProps> = ({ selectedTier
                       <small className="text-muted font-monospace">{asset.serial_number}</small>
                     </td>
                     <td>
-                      <span className="badge bg-light text-dark border">{asset.line_name}</span>
+                      <span className="badge bg-light text-dark border">{asset.production_line}</span>
                     </td>
                     <td>
                       {asset.status === 'online' ? (

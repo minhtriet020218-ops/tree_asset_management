@@ -1,5 +1,6 @@
 const adSyncService = require('./adSyncService');
 const statusCheckService = require('./statusCheckService');
+const alertService = require('./alertService');
 
 const state = { ad: null, status: null };
 
@@ -29,6 +30,16 @@ function guard(name, fn) {
 
 module.exports = {
   runAdSync: guard('ad', () => adSyncService.syncComputersToDatabase()),
-  runStatusCheck: guard('status', () => statusCheckService.checkAll()),
+  runStatusCheck: guard('status', async () => {
+    const result = await statusCheckService.checkAll();
+    // Lỗi gửi cảnh báo không được làm hỏng kết quả kiểm tra trạng thái
+    try {
+      result.alerts = await alertService.run();
+    } catch (err) {
+      console.error('Gửi cảnh báo lỗi:', err.message);
+      result.alerts = { error: err.message };
+    }
+    return result;
+  }),
   getState: () => state,
 };

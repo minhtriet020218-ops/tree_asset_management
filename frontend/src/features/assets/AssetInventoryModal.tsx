@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import type { TreeNode, Asset, AssetMeta } from '../../types/asset.types';
 import { assetService } from '../../services/assetService';
 import { isMonitor } from './assetUtils';
+import { AssetMaintenanceModal } from './AssetMaintenanceModal';
 
 interface AssetInventoryProps {
   selectedTier: TreeNode | null;
@@ -55,6 +56,8 @@ export const AssetInventoryModal: React.FC<AssetInventoryProps> = ({
   const [searchField, setSearchField] = useState<TextKey>('it_asset_code');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAssetIds, setSelectedAssetIds] = useState<number[]>([]);
+  const [exporting, setExporting] = useState(false);
+  const [historyAsset, setHistoryAsset] = useState<Asset | null>(null);
 
   const [showModal, setShowModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -116,6 +119,17 @@ export const AssetInventoryModal: React.FC<AssetInventoryProps> = ({
     setShowModal(false);
   };
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await assetService.exportAssets({ nodeId: selectedTier?.id });
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleLiquidation = () => {
     if (selectedAssetIds.length === 0) {
       alert('Vui lòng chọn ít nhất 1 tài sản để thanh lý/xóa!');
@@ -125,6 +139,14 @@ export const AssetInventoryModal: React.FC<AssetInventoryProps> = ({
       onDeleteAssets(selectedAssetIds);
       setSelectedAssetIds([]);
     }
+  };
+
+  const handleOpenHistory = () => {
+    if (selectedAssetIds.length !== 1) {
+      alert('Vui lòng chọn chính xác 1 tài sản để xem lịch sử!');
+      return;
+    }
+    setHistoryAsset(assets.find((a) => a.id === selectedAssetIds[0]) ?? null);
   };
 
   const setText = (key: TextKey, value: string) => setFormData((prev) => ({ ...prev, [key]: value }));
@@ -174,7 +196,10 @@ export const AssetInventoryModal: React.FC<AssetInventoryProps> = ({
             <button className="btn btn-secondary btn-sm d-flex align-items-center gap-1">
               <i className="bi bi-tools"></i> Sửa hàng loạt
             </button>
-            <button className="btn btn-info btn-sm text-white d-flex align-items-center gap-1">
+            <button className="btn btn-info btn-sm text-white d-flex align-items-center gap-1" onClick={handleOpenHistory}>
+              {historyAsset && (
+                <AssetMaintenanceModal key={historyAsset.id} asset={historyAsset} onClose={() => setHistoryAsset(null)} />
+              )}
               <i className="bi bi-clock-history"></i> History
             </button>
             <button className="btn btn-warning btn-sm text-dark d-flex align-items-center gap-1">
@@ -189,8 +214,13 @@ export const AssetInventoryModal: React.FC<AssetInventoryProps> = ({
             <button className="btn btn-info btn-sm text-white d-flex align-items-center gap-1" style={{ backgroundColor: '#00bcd4' }}>
               <i className="bi bi-arrow-repeat"></i> Sync to Freshservice
             </button>
-            <button className="btn btn-info btn-sm text-white d-flex align-items-center gap-1" style={{ backgroundColor: '#17a2b8' }}>
-              <i className="bi bi-file-excel"></i> Xuất nhập dữ liệu
+            <button
+              className="btn btn-info btn-sm text-white d-flex align-items-center gap-1"
+              style={{ backgroundColor: '#17a2b8' }}
+              onClick={handleExport}
+              disabled={exporting}
+            >
+              <i className="bi bi-file-excel"></i> {exporting ? 'Đang xuất...' : 'Xuất nhập dữ liệu'}
             </button>
             <button className="btn btn-danger btn-sm d-flex align-items-center gap-1" onClick={handleLiquidation}>
               <i className="bi bi-trash"></i> Asset Liquidation

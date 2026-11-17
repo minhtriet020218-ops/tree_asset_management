@@ -20,6 +20,7 @@ app.use(
       if (!origin || env.corsOrigins.includes(origin)) return cb(null, true);
       cb(new Error('Origin không được phép'));
     },
+    exposedHeaders: ['Content-Disposition'],
   })
 );
 app.use(express.json({ limit: '1mb' }));

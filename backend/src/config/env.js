@@ -10,6 +10,11 @@ if (missing.length) {
 const num = (v, d) => (Number.isFinite(Number(v)) && v !== undefined && v !== '' ? Number(v) : d);
 const adConfigured = ['AD_URL', 'AD_BASE_DN', 'AD_SERVICE_USER', 'AD_SERVICE_PASSWORD'].every((k) => process.env[k]);
 
+// --- Cảnh báo (Teams webhook và/hoặc email) ---
+const emailTo = (process.env.ALERT_EMAIL_TO || '').split(',').map((s) => s.trim()).filter(Boolean);
+const emailConfigured = Boolean(process.env.SMTP_HOST && process.env.ALERT_EMAIL_FROM && emailTo.length);
+const teamsWebhook = (process.env.TEAMS_WEBHOOK_URL || '').trim();
+
 module.exports = {
   port: num(process.env.PORT, 8080),
   corsOrigins: (process.env.CORS_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean),
@@ -42,5 +47,21 @@ module.exports = {
     dnsSuffix: (process.env.HOST_DNS_SUFFIX || '').replace(/^\./, ''),
     dnsConcurrency: Math.max(1, num(process.env.DNS_CONCURRENCY, 3)),
     dnsTimeoutMs: num(process.env.DNS_TIMEOUT_MS, 3000),
+  },
+  alerts: {
+    enabled: Boolean(teamsWebhook) || emailConfigured,
+    offlineAfterMin: Math.max(1, num(process.env.ALERT_OFFLINE_MINUTES, 60)), // offline bao lâu thì báo
+    repeatHours: Math.max(0, num(process.env.ALERT_REPEAT_HOURS, 24)),         // nhắc lại sau X giờ nếu vẫn offline (0 = không nhắc)
+    teamsWebhook,
+    email: {
+      configured: emailConfigured,
+      host: process.env.SMTP_HOST,
+      port: num(process.env.SMTP_PORT, 587),
+      secure: process.env.SMTP_SECURE === 'true', // true cho cổng 465
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASSWORD,
+      from: process.env.ALERT_EMAIL_FROM,
+      to: emailTo,
+    },
   },
 };
