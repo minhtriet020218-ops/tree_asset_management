@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import type { TreeNode, Asset, AssetMeta } from '../../types/asset.types';
 import { assetService } from '../../services/assetService';
 import { isMonitor } from './assetUtils';
-import { AssetMaintenanceModal } from './AssetMaintenanceModal';
+import { AssetMaintenanceModal } from './assetMaintenanceModal';
 
 interface AssetInventoryProps {
   selectedTier: TreeNode | null;
@@ -197,9 +197,6 @@ export const AssetInventoryModal: React.FC<AssetInventoryProps> = ({
               <i className="bi bi-tools"></i> Sửa hàng loạt
             </button>
             <button className="btn btn-info btn-sm text-white d-flex align-items-center gap-1" onClick={handleOpenHistory}>
-              {historyAsset && (
-                <AssetMaintenanceModal key={historyAsset.id} asset={historyAsset} onClose={() => setHistoryAsset(null)} />
-              )}
               <i className="bi bi-clock-history"></i> History
             </button>
             <button className="btn btn-warning btn-sm text-dark d-flex align-items-center gap-1">
@@ -405,6 +402,9 @@ export const AssetInventoryModal: React.FC<AssetInventoryProps> = ({
             </div>
           </div>
         </div>
+      )}
+      {historyAsset && (
+        <AssetMaintenanceModal key={historyAsset.id} asset={historyAsset} onClose={() => setHistoryAsset(null)} />
       )}
     </div>
   );

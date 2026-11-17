@@ -166,11 +166,11 @@ class AssetRepository {
     return { inserted, updated };
   }
 
-  async listForStatusCheck() {
+    async listForStatusCheck() {
     const result = await db.query(
       `SELECT id, hostname FROM assets
        WHERE hostname IS NOT NULL AND hostname <> ''
-         AND hostname NOT ILIKE 'DEMO-%'`  // bỏ qua máy dữ liệu mẫu
+         AND NOT is_demo`   // bỏ qua máy dữ liệu mẫu
     );
     return result.rows;
   }

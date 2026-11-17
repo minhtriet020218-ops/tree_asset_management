@@ -4,10 +4,10 @@ const env = require('../config/env');
 const cfg = env.alerts;
 const MAX_LISTED = 25; // tối đa số máy liệt kê trong 1 tin, phần còn lại ghi "và N thiết bị khác"
 
-// Chỉ cảnh báo máy thật: bỏ Monitor (đi theo PC), máy DEMO-, máy đã bị vô hiệu trong AD
+// Chỉ cảnh báo máy thật: bỏ Monitor (đi theo PC), máy dữ liệu mẫu (is_demo), máy đã bị vô hiệu trong AD
 const ALERTABLE = `
   COALESCE(a.category, '') NOT ILIKE '%monitor%'
-  AND COALESCE(a.hostname, '') NOT ILIKE 'DEMO-%'
+  AND NOT a.is_demo
   AND a.ad_enabled IS DISTINCT FROM FALSE`;
 
 const esc = (s) =>
