@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import type { Asset } from '../../types/asset.types';
-import { SCENE, SIZE, type Kind, type TierPlan } from './schematic3dLayout';
+import { SCENE, SIZE, type Kind, type Placed, type TierPlan } from './schematic3dLayout';
 
-/** Màu theo bản vẽ tay: Monitor xanh dương, PC nâu, Máy in cam, Line đen, dây nối xanh lá.
+/** Màu theo bản vẽ tay: Monitor xanh dương, PC nâu, Máy in cam, Line đen, dây nối xanh lá, mũi tên nâu.
  *  Thiết bị offline đổi sang đỏ để nhìn là biết. */
 export const COLORS = {
   monitor: 0x1e90ff,
@@ -10,6 +10,7 @@ export const COLORS = {
   printer: 0xff7f11,
   line: 0x111111,
   wire: 0x7bd911,
+  arrow: 0xa0522d,
   offline: 0xe03131,
   frame: 0x2980b9,
   box: 0x495057,
@@ -57,7 +58,7 @@ function addRoundButton(g: THREE.Group, fills: Fills, r: number, x: number, y: n
 }
 
 // ---------------------------------------------------------------- hình dáng từng loại
-/** Màn hình: dùng 1 kiểu cố định (đế + cổ + tấm màn hình). */
+/** Màn hình: dùng 1 kiểu cố định (đế + cổ + tấm màn hình). Mặt màn hình quay về +Z. */
 function buildMonitor(g: THREE.Group, f: Fills, c: number): void {
   const { w, h, d } = SIZE.monitor;
   const panelH = 0.46;
@@ -132,13 +133,27 @@ export function setGlow(fills: THREE.Mesh[] | undefined, on: boolean): void {
   });
 }
 
-// ---------------------------------------------------------------- dây, nhãn, bóng dưới sàn
+// ---------------------------------------------------------------- dây, mũi tên, nhãn, bóng dưới sàn
 /** Dây xanh lá nối màn hình với PC, võng nhẹ xuống ở giữa. */
 export function createWire(from: THREE.Vector3, to: THREE.Vector3, color: number): THREE.Mesh {
   const mid = from.clone().lerp(to, 0.5);
   mid.y -= 0.14;
   const curve = new THREE.CatmullRomCurve3([from, mid, to]);
   return new THREE.Mesh(new THREE.TubeGeometry(curve, 24, 0.018, 8, false), new THREE.MeshBasicMaterial({ color }));
+}
+
+/** Mũi tên nằm trên sàn, gốc ở thanh line, chỉ về +Z (xoay π quanh Y để chỉ về -Z).
+ *  = hướng quay mặt của màn hình trên line. */
+export function createArrow(color: number): THREE.Group {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.88, roughness: 0.4 });
+  const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.03, 1.2), mat);
+  shaft.position.set(0, 0.02, 0.6);
+  const head = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.5, 16), mat);
+  head.rotation.x = Math.PI / 2; // đỉnh nón chỉ về +Z
+  head.position.set(0, 0.04, 1.45);
+  g.add(shaft, head);
+  return g;
 }
 
 /** Nhãn chữ luôn quay về phía camera. Chiều rộng thật = sprite.scale.x. */
@@ -193,31 +208,56 @@ export interface SceneBuild {
   pickables: THREE.Mesh[];
   fillsByAsset: Map<number, THREE.Mesh[]>;
   assetByMesh: Map<THREE.Object3D, Asset>;
+  /** Tâm của từng thiết bị trong thế giới 3D (để camera bay tới khi double-click). */
+  positionByAsset: Map<number, THREE.Vector3>;
   bounds: THREE.Box3;
 }
 
 const colorFor = (kind: Kind, offline: boolean): number =>
   offline ? COLORS.offline : kind === 'printer' ? COLORS.printer : kind === 'pc' || kind === 'tower' ? COLORS.pc : COLORS.monitor;
 
+/** Nửa bề rộng của thiết bị theo trục X của line (show-up xoay 90° nên dùng độ dày). */
+const halfX = (it: Placed): number => (it.face ? SIZE[it.kind].d : SIZE[it.kind].w) / 2;
+
 /**
  * Hộp kính chứa cả tầng → mỗi line là 1 khung bao quanh tài sản của nó (+ thanh line đen).
+ * Các line đặt theo mặt bằng của bản vẽ (FLOOR_PLAN): vị trí, hướng mũi tên = hướng màn hình.
  * Màn hình / PC lơ lửng trên không, máy in đặt dưới sàn, dây xanh lá nối màn hình với PC.
- * Line xếp lần lượt theo trục Z, thiết bị trong line xếp theo trục X.
  */
 export function buildScene(plan: TierPlan, tierName: string): SceneBuild {
-  const { floatY, pad, frameDepth, frameHeight, lineGap } = SCENE;
+  const { floatY, pad, frameDepth, frameHeight } = SCENE;
   const group = new THREE.Group();
   const pickables: THREE.Mesh[] = [];
   const fillsByAsset = new Map<number, THREE.Mesh[]>();
   const assetByMesh = new Map<THREE.Object3D, Asset>();
+  const positionByAsset = new Map<number, THREE.Vector3>();
 
-  const zStep = frameDepth + lineGap;
-  const width = Math.max(plan.width, 4);
-  const outer = pad + 0.6;
-  const xMin = -outer;
-  const xMax = width + outer;
-  const zMin = -frameDepth / 2 - 0.6;
-  const zMax = Math.max(plan.lines.length - 1, 0) * zStep + frameDepth / 2 + 0.6;
+  // vùng chiếm của từng line trên mặt bằng -> hộp bao cả tầng
+  let xMin = Infinity;
+  let xMax = -Infinity;
+  let zMin = Infinity;
+  let zMax = -Infinity;
+  plan.lines.forEach((l) => {
+    const { cx, cz, dir } = l.cfg;
+    const fw = l.length + pad * 2;
+    const za = cz - (dir * frameDepth) / 2;
+    const zb = cz + dir * (frameDepth / 2 + l.extraFront);
+    xMin = Math.min(xMin, cx - fw / 2);
+    xMax = Math.max(xMax, cx + fw / 2);
+    zMin = Math.min(zMin, za, zb);
+    zMax = Math.max(zMax, za, zb);
+  });
+  if (plan.lines.length === 0) {
+    xMin = -1;
+    xMax = 5;
+    zMin = -1;
+    zMax = 1;
+  }
+  const margin = 0.8;
+  xMin -= margin;
+  xMax += margin;
+  zMin -= margin;
+  zMax += margin;
   const yMax = frameHeight + 0.5;
 
   // hộp chứa + sàn
@@ -247,13 +287,16 @@ export function buildScene(plan: TierPlan, tierName: string): SceneBuild {
   tierLabel.position.set(xMin + tierLabel.scale.x / 2, yMax + 0.4, zMax);
   group.add(tierLabel);
 
-  plan.lines.forEach((line, li) => {
-    const z = li * zStep;
+  plan.lines.forEach((line) => {
+    const { cx, cz, dir } = line.cfg;
+    const x0 = cx - line.length / 2; // x thế giới của mép trái line
+    const zAt = (v: number) => cz + dir * v; // v = khoảng lệch theo hướng mũi tên (v>0: về phía màn hình quay tới)
     const fw = line.length + pad * 2;
+    const fd = frameDepth + line.extraFront;
 
-    // khung bao quát line
-    const frameGeo = new THREE.BoxGeometry(fw, frameHeight, frameDepth);
-    const framePos = new THREE.Vector3(line.length / 2, frameHeight / 2, z);
+    // khung bao quát line (kéo dài về phía trước nếu có máy in ở hàng sau)
+    const frameGeo = new THREE.BoxGeometry(fw, frameHeight, fd);
+    const framePos = new THREE.Vector3(cx, frameHeight / 2, zAt(line.extraFront / 2));
     const frameFill = new THREE.Mesh(
       frameGeo,
       new THREE.MeshBasicMaterial({ color: COLORS.frame, transparent: true, opacity: 0.05, depthWrite: false }),
@@ -262,31 +305,44 @@ export function buildScene(plan: TierPlan, tierName: string): SceneBuild {
     const frameEdges = new THREE.LineSegments(new THREE.EdgesGeometry(frameGeo), new THREE.LineBasicMaterial({ color: COLORS.frame }));
     frameEdges.position.copy(framePos);
 
-    // thanh line (đen) chạy dọc phía sau, sát sàn
+    // thanh line (đen) chạy dọc phía sau thiết bị, sát sàn
     const bar = new THREE.Mesh(new THREE.BoxGeometry(fw, 0.08, 0.14), new THREE.MeshStandardMaterial({ color: COLORS.line }));
-    bar.position.set(line.length / 2, 0.04, z - 0.55);
+    bar.position.set(cx, 0.04, zAt(-0.55));
 
     const lineLabel = createLabel(`${line.name} • ${line.items.length} thiết bị`, 0.3, '#2980b9');
-    lineLabel.position.set(-pad + lineLabel.scale.x / 2, frameHeight + 0.22, z + frameDepth / 2);
+    lineLabel.position.set(x0 - pad + lineLabel.scale.x / 2, frameHeight + 0.22, zAt(frameDepth / 2 + line.extraFront));
     group.add(frameFill, frameEdges, bar, lineLabel);
 
-    const placed = new Map<number, (typeof line.items)[number]>();
+    // mũi tên: hướng màn hình quay
+    const arrow = createArrow(COLORS.arrow);
+    arrow.position.set(x0 + line.arrowX, 0, zAt(-0.55));
+    arrow.rotation.y = dir === 1 ? 0 : Math.PI;
+    group.add(arrow);
+
+    const placed = new Map<number, Placed>();
     line.items.forEach((it) => {
       placed.set(it.asset.id, it);
       const offline = it.asset.status === 'offline';
       const floating = it.kind !== 'printer';
       const color = colorFor(it.kind, offline);
       const { group: model, fills } = createModel(it.kind, color);
-      model.position.set(it.x, floating ? floatY : 0, z);
+      const wx = x0 + it.x;
+      const wz = zAt(it.v);
+      const wy = floating ? floatY : 0;
+      model.position.set(wx, wy, wz);
+      // mặt trước của thiết bị quay theo mũi tên; show-up quay mặt dọc theo line
+      model.rotation.y = it.face === 'left' ? -Math.PI / 2 : it.face === 'right' ? Math.PI / 2 : dir === 1 ? 0 : Math.PI;
       group.add(model);
       fills.forEach((m) => {
         pickables.push(m);
         assetByMesh.set(m, it.asset);
       });
       fillsByAsset.set(it.asset.id, fills);
+      positionByAsset.set(it.asset.id, new THREE.Vector3(wx, wy + SIZE[it.kind].h / 2, wz));
       if (floating) {
-        const marker = createFloorMarker(SIZE[it.kind].w, SIZE[it.kind].d, color);
-        marker.position.set(it.x, 0.003, z);
+        const s = SIZE[it.kind];
+        const marker = createFloorMarker(it.face ? s.d : s.w, it.face ? s.w : s.d, color);
+        marker.position.set(wx, 0.003, wz);
         group.add(marker);
       }
     });
@@ -296,14 +352,14 @@ export function buildScene(plan: TierPlan, tierName: string): SceneBuild {
       const m = placed.get(w.monitorId);
       const p = placed.get(w.pcId);
       if (!m || !p) return;
-      const dir = m.x < p.x ? 1 : -1; // 1: màn hình nằm bên trái PC
-      const from = new THREE.Vector3(m.x + (dir * SIZE.monitor.w) / 2, floatY + 0.18, z);
-      const to = new THREE.Vector3(p.x - (dir * SIZE[p.kind].w) / 2, floatY + SIZE[p.kind].h / 2, z);
+      const sign = m.x < p.x ? 1 : -1; // 1: màn hình nằm bên trái PC
+      const from = new THREE.Vector3(x0 + m.x + sign * halfX(m), floatY + 0.18, zAt(m.v));
+      const to = new THREE.Vector3(x0 + p.x - sign * halfX(p), floatY + SIZE[p.kind].h / 2, zAt(p.v));
       const ok = m.asset.status === 'online' && p.asset.status === 'online';
       group.add(createWire(from, to, ok ? COLORS.wire : COLORS.offline));
     });
   });
 
   const bounds = new THREE.Box3(new THREE.Vector3(xMin, 0, zMin), new THREE.Vector3(xMax, yMax + 0.8, zMax));
-  return { group, pickables, fillsByAsset, assetByMesh, bounds };
+  return { group, pickables, fillsByAsset, assetByMesh, positionByAsset, bounds };
 }
