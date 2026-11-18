@@ -201,23 +201,22 @@ const colorFor = (kind: Kind, offline: boolean): number =>
 
 /**
  * Hộp kính chứa cả tầng → mỗi line là 1 khung bao quanh tài sản của nó (+ thanh line đen).
+ * Line nằm đúng chỗ trên mặt bằng như bản vẽ (schematic3dLayout.LINE_LAYOUT).
  * Màn hình / PC lơ lửng trên không, máy in đặt dưới sàn, dây xanh lá nối màn hình với PC.
- * Line xếp lần lượt theo trục Z, thiết bị trong line xếp theo trục X.
+ * Thiết bị trong line xếp theo trục X, chiều sâu theo trục Z (phía trước = +Z, hướng về camera).
  */
 export function buildScene(plan: TierPlan, tierName: string): SceneBuild {
-  const { floatY, pad, frameDepth, frameHeight, lineGap } = SCENE;
+  const { floatY, pad, frameHeight } = SCENE;
   const group = new THREE.Group();
   const pickables: THREE.Mesh[] = [];
   const fillsByAsset = new Map<number, THREE.Mesh[]>();
   const assetByMesh = new Map<THREE.Object3D, Asset>();
 
-  const zStep = frameDepth + lineGap;
-  const width = Math.max(plan.width, 4);
-  const outer = pad + 0.6;
-  const xMin = -outer;
-  const xMax = width + outer;
-  const zMin = -frameDepth / 2 - 0.6;
-  const zMax = Math.max(plan.lines.length - 1, 0) * zStep + frameDepth / 2 + 0.6;
+  const margin = 0.6; // đệm giữa các khung line và thành hộp
+  const xMin = plan.xMin - margin;
+  const xMax = plan.xMax + margin;
+  const zMin = plan.zMin - margin;
+  const zMax = plan.zMax + margin;
   const yMax = frameHeight + 0.5;
 
   // hộp chứa + sàn
@@ -247,13 +246,15 @@ export function buildScene(plan: TierPlan, tierName: string): SceneBuild {
   tierLabel.position.set(xMin + tierLabel.scale.x / 2, yMax + 0.4, zMax);
   group.add(tierLabel);
 
-  plan.lines.forEach((line, li) => {
-    const z = li * zStep;
+  plan.lines.forEach((line) => {
+    const z = line.z;
     const fw = line.length + pad * 2;
+    const fd = line.zFront - line.zBack;
+    const cx = line.x0 + line.length / 2;
 
     // khung bao quát line
-    const frameGeo = new THREE.BoxGeometry(fw, frameHeight, frameDepth);
-    const framePos = new THREE.Vector3(line.length / 2, frameHeight / 2, z);
+    const frameGeo = new THREE.BoxGeometry(fw, frameHeight, fd);
+    const framePos = new THREE.Vector3(cx, frameHeight / 2, z + (line.zFront + line.zBack) / 2);
     const frameFill = new THREE.Mesh(
       frameGeo,
       new THREE.MeshBasicMaterial({ color: COLORS.frame, transparent: true, opacity: 0.05, depthWrite: false }),
@@ -262,12 +263,12 @@ export function buildScene(plan: TierPlan, tierName: string): SceneBuild {
     const frameEdges = new THREE.LineSegments(new THREE.EdgesGeometry(frameGeo), new THREE.LineBasicMaterial({ color: COLORS.frame }));
     frameEdges.position.copy(framePos);
 
-    // thanh line (đen) chạy dọc phía sau, sát sàn
+    // thanh line (đen) chạy dọc, sát sàn: nằm sau hoặc trước dãy thiết bị tùy bản vẽ
     const bar = new THREE.Mesh(new THREE.BoxGeometry(fw, 0.08, 0.14), new THREE.MeshStandardMaterial({ color: COLORS.line }));
-    bar.position.set(line.length / 2, 0.04, z - 0.55);
+    bar.position.set(cx, 0.04, z + (line.bar === 'back' ? -0.55 : 0.55));
 
     const lineLabel = createLabel(`${line.name} • ${line.items.length} thiết bị`, 0.3, '#2980b9');
-    lineLabel.position.set(-pad + lineLabel.scale.x / 2, frameHeight + 0.22, z + frameDepth / 2);
+    lineLabel.position.set(line.x0 - pad + lineLabel.scale.x / 2, frameHeight + 0.22, z + line.zFront);
     group.add(frameFill, frameEdges, bar, lineLabel);
 
     const placed = new Map<number, (typeof line.items)[number]>();
@@ -277,7 +278,8 @@ export function buildScene(plan: TierPlan, tierName: string): SceneBuild {
       const floating = it.kind !== 'printer';
       const color = colorFor(it.kind, offline);
       const { group: model, fills } = createModel(it.kind, color);
-      model.position.set(it.x, floating ? floatY : 0, z);
+      const wz = z + (it.dz ?? 0);
+      model.position.set(line.x0 + it.x, floating ? floatY : 0, wz);
       group.add(model);
       fills.forEach((m) => {
         pickables.push(m);
@@ -286,19 +288,19 @@ export function buildScene(plan: TierPlan, tierName: string): SceneBuild {
       fillsByAsset.set(it.asset.id, fills);
       if (floating) {
         const marker = createFloorMarker(SIZE[it.kind].w, SIZE[it.kind].d, color);
-        marker.position.set(it.x, 0.003, z);
+        marker.position.set(line.x0 + it.x, 0.003, wz);
         group.add(marker);
       }
     });
 
-    // dây xanh lá: màn hình ↔ PC
+    // dây xanh lá: màn hình (kể cả monitor show up) ↔ PC
     line.wires.forEach((w) => {
       const m = placed.get(w.monitorId);
       const p = placed.get(w.pcId);
       if (!m || !p) return;
       const dir = m.x < p.x ? 1 : -1; // 1: màn hình nằm bên trái PC
-      const from = new THREE.Vector3(m.x + (dir * SIZE.monitor.w) / 2, floatY + 0.18, z);
-      const to = new THREE.Vector3(p.x - (dir * SIZE[p.kind].w) / 2, floatY + SIZE[p.kind].h / 2, z);
+      const from = new THREE.Vector3(line.x0 + m.x + (dir * SIZE[m.kind].w) / 2, floatY + 0.18, z);
+      const to = new THREE.Vector3(line.x0 + p.x - (dir * SIZE[p.kind].w) / 2, floatY + SIZE[p.kind].h / 2, z);
       const ok = m.asset.status === 'online' && p.asset.status === 'online';
       group.add(createWire(from, to, ok ? COLORS.wire : COLORS.offline));
     });
