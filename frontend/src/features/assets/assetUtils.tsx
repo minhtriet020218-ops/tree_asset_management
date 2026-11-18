@@ -8,3 +8,12 @@ export const isPrinter = (a: Asset) => cat(a).includes('printer') || cat(a).incl
 // Đang tắt cảnh báo offline (máy mới tạo / đang bảo trì)
 export const isMuted = (a: Asset) =>
   !!a.alerts_muted_until && new Date(a.alerts_muted_until).getTime() > Date.now();
+
+const text = (a: Asset) => `${a.category || ''} ${a.product || ''}`;
+
+// "Monitor show up": tấm hiển thị dọc đặt ở đầu line. Nhận diện qua Category/Product có chữ show / andon / signage / bảng
+export const isShowMonitor = (a: Asset) => isMonitor(a) && /show|andon|signage|bảng/i.test(text(a));
+
+// PC "to" (hình chữ nhật đứng). Các PC còn lại vẽ hình vuông nhỏ kiểu HP ProDesk G3.
+// Nhận diện qua Category/Product có chữ tower / workstation / MT / precision / thinkstation / Z2-Z8
+export const isTowerPc = (a: Asset) => /\b(tower|workstation|mt|precision|thinkstation|z[2468])\b/i.test(text(a));
