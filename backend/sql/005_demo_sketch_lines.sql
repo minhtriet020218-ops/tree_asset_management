@@ -15,6 +15,10 @@
 -- LƯU Ý: script này XÓA dữ liệu mẫu cũ (mọi máy có hostname bắt đầu bằng DEMO- và màn hình gắn vào chúng)
 -- trước khi tạo lại, nên chạy lại bao nhiêu lần cũng được. Không đụng tới máy thật.
 -- Tên line "Line 1".."Line 8" phải trùng với khóa trong LINE_LAYOUT (schematic3dLayout.ts).
+--
+-- Ngoài 59 tài sản đã vào line, script còn tạo thêm 7 thiết bị DỰ PHÒNG trong KHO (chưa có node, chưa có Line):
+-- 2 PC, 3 màn hình, 1 monitor show up, 1 máy in Zebra. Dùng để thử kéo thả từ Kho ra sơ đồ 3D.
+-- (Cần chạy 006_stock_assignment.sql để cột in_stock có hiệu lực.)
 DO $$
 DECLARE
   v_node_name text := NULL;
@@ -65,6 +69,7 @@ BEGIN
   END IF;
   DELETE FROM assets WHERE parent_asset_id IN (SELECT id FROM assets WHERE hostname LIKE 'DEMO-%');
   DELETE FROM assets WHERE hostname LIKE 'DEMO-%';
+  DELETE FROM assets WHERE it_asset_code LIKE 'DEMO-STK-%';   -- thiết bị mẫu trong Kho (màn hình không có hostname)
 
   -- 3) Tạo tài sản theo bản vẽ
   FOR v_line IN SELECT * FROM jsonb_array_elements(v_spec) LOOP
@@ -128,6 +133,19 @@ BEGIN
       );
     END LOOP;
   END LOOP;
+
+  -- 3b) Thiết bị dự phòng trong KHO: để trống node và Line => in_stock = true
+  INSERT INTO assets (it_asset_code, hostname, category, product, po_invoice, serial_number, status, fail_count, last_seen_at)
+  SELECT s.code, s.host, s.cat, s.prod, 'PO-2026-002', upper(substr(md5('stock-' || s.code), 1, 10)), 'online', 0, now()
+  FROM (VALUES
+    ('DEMO-STK-PC1',   'DEMO-STK-PC1', 'PC',              'HP ProDesk 400 G3 SFF'),
+    ('DEMO-STK-PC2',   'DEMO-STK-PC2', 'PC',              'HP Z4 Workstation'),
+    ('DEMO-STK-MON1',  NULL,           'Monitor',         'Dell P2422H'),
+    ('DEMO-STK-MON2',  NULL,           'Monitor',         'Dell P2422H'),
+    ('DEMO-STK-MON3',  NULL,           'Monitor',         'Dell P2422H'),
+    ('DEMO-STK-SHOW1', NULL,           'Monitor show up', 'LED Andon 32 inch'),
+    ('DEMO-STK-PRN1',  'DEMO-STK-PRN1','Printer',         'Zebra ZT411')
+  ) AS s(code, host, cat, prod);
 
   -- 4) Đánh dấu máy mẫu để kiểm tra mạng / cảnh báo bỏ qua (chỉ khi is_demo là cột thường)
   IF EXISTS (SELECT 1 FROM information_schema.columns

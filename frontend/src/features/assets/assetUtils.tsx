@@ -17,3 +17,7 @@ export const isShowMonitor = (a: Asset) => isMonitor(a) && /show|andon|signage|b
 // PC "to" (hình chữ nhật đứng). Các PC còn lại vẽ hình vuông nhỏ kiểu HP ProDesk G3.
 // Nhận diện qua Category/Product có chữ tower / workstation / MT / precision / thinkstation / Z2-Z8
 export const isTowerPc = (a: Asset) => /\b(tower|workstation|mt|precision|thinkstation|z[2468])\b/i.test(text(a));
+
+// Thiết bị đang trong KHO (chưa biên chế vào line): thiếu node hoặc thiếu Line.
+// Ưu tiên cờ in_stock do server tính; chưa có (vd: vừa tạo xong) thì tự suy ra bằng đúng quy tắc đó.
+export const isStock = (a: Asset) => a.in_stock ?? (a.node_id == null || !(a.production_line ?? '').trim());

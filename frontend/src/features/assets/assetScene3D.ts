@@ -1,18 +1,20 @@
 import * as THREE from 'three';
 import type { Asset } from '../../types/asset.types';
-import { SCENE, SIZE, type Kind, type TierPlan } from './schematic3dLayout';
+import { SCENE, SIZE, type Kind, type LinePlan, type TierPlan } from './schematic3dLayout';
 
-/** Màu theo bản vẽ tay: Monitor xanh dương, PC nâu, Máy in cam, Line đen, dây nối xanh lá.
- *  Thiết bị offline đổi sang đỏ để nhìn là biết. */
+/** Màu theo bản vẽ tay: Monitor xanh dương, PC nâu, Máy in cam, Line (đen trên nền sáng → xám sáng trên nền tối), dây nối xanh lá.
+ *  Thiết bị offline đổi sang đỏ để nhìn là biết. Nền 3D tối nên viền / khung / sàn dùng tông sáng hơn. */
 export const COLORS = {
   monitor: 0x1e90ff,
   pc: 0xb5651d,
   printer: 0xff7f11,
-  line: 0x111111,
+  line: 0xced4da,
   wire: 0x7bd911,
   offline: 0xe03131,
-  frame: 0x2980b9,
-  box: 0x495057,
+  frame: 0x4dabf7,
+  box: 0x7b8794,
+  background: 0x12161c,
+  floor: 0x232a33,
 };
 
 const FILL_OPACITY = 0.38;
@@ -35,7 +37,7 @@ function addBox(
   fill.userData.baseOpacity = opacity;
   const edges = new THREE.LineSegments(
     new THREE.EdgesGeometry(geo),
-    new THREE.LineBasicMaterial({ color: new THREE.Color(color).multiplyScalar(0.65) }),
+    new THREE.LineBasicMaterial({ color: new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.4) }), // viền sáng hơn thân để nổi trên nền tối
   );
   edges.position.set(x, y, z);
   g.add(fill, edges);
@@ -132,6 +134,30 @@ export function setGlow(fills: THREE.Mesh[] | undefined, on: boolean): void {
   });
 }
 
+/** Khung line sáng xanh khi đang kéo thiết bị qua nó (line = null: tắt). */
+export function highlightFrame(frames: LineFrame[], line: string | null): void {
+  frames.forEach((f) => {
+    const mat = f.mesh.material as THREE.MeshBasicMaterial;
+    const on = f.line === line;
+    mat.opacity = on ? 0.25 : (f.mesh.userData.baseOpacity as number);
+    mat.color.setHex(on ? 0x2f9e44 : COLORS.frame);
+  });
+}
+
+/** Hiện vạch xanh tại vị trí xLocal (tính từ đầu line) trong khung `frame`; frame = null thì ẩn. */
+export function showInsertMarker(build: SceneBuild, frame: LineFrame | null, markerX = 0): void {
+  const m = build.marker;
+  if (!frame) {
+    m.visible = false;
+    return;
+  }
+  const { plan } = frame;
+  const depth = plan.zFront - plan.zBack - 0.1;
+  m.scale.set(1, 1, depth);
+  m.position.set(plan.x0 + markerX, 1.15, plan.z + (plan.zFront + plan.zBack) / 2);
+  m.visible = true;
+}
+
 // ---------------------------------------------------------------- dây, nhãn, bóng dưới sàn
 /** Dây xanh lá nối màn hình với PC, võng nhẹ xuống ở giữa. */
 export function createWire(from: THREE.Vector3, to: THREE.Vector3, color: number): THREE.Mesh {
@@ -188,12 +214,21 @@ export function disposeObject(root: THREE.Object3D): void {
 }
 
 // ---------------------------------------------------------------- dựng cả "hộp" của tầng
+export interface LineFrame {
+  mesh: THREE.Mesh; // khung bao line: đích để thả thiết bị từ Kho vào
+  line: string;
+  nodeId: number | null;
+  plan: LinePlan; // bố cục của line: để đổi vị trí chuột thành vị trí xếp trong line
+}
+
 export interface SceneBuild {
   group: THREE.Group;
+  frames: LineFrame[];
   pickables: THREE.Mesh[];
   fillsByAsset: Map<number, THREE.Mesh[]>;
   assetByMesh: Map<THREE.Object3D, Asset>;
   bounds: THREE.Box3;
+  marker: THREE.Mesh; // vạch xanh báo vị trí sẽ thả vào trong line (mặc định ẩn)
 }
 
 const colorFor = (kind: Kind, offline: boolean): number =>
@@ -211,6 +246,7 @@ export function buildScene(plan: TierPlan, tierName: string): SceneBuild {
   const pickables: THREE.Mesh[] = [];
   const fillsByAsset = new Map<number, THREE.Mesh[]>();
   const assetByMesh = new Map<THREE.Object3D, Asset>();
+  const frames: LineFrame[] = [];
 
   const margin = 0.6; // đệm giữa các khung line và thành hộp
   const xMin = plan.xMin - margin;
@@ -224,14 +260,14 @@ export function buildScene(plan: TierPlan, tierName: string): SceneBuild {
   const center = new THREE.Vector3((xMin + xMax) / 2, yMax / 2, (zMin + zMax) / 2);
   const boxFill = new THREE.Mesh(
     boxGeo,
-    new THREE.MeshBasicMaterial({ color: 0x74c0fc, transparent: true, opacity: 0.05, depthWrite: false, side: THREE.BackSide }),
+    new THREE.MeshBasicMaterial({ color: 0x74c0fc, transparent: true, opacity: 0.07, depthWrite: false, side: THREE.BackSide }),
   );
   boxFill.position.copy(center);
   const boxEdges = new THREE.LineSegments(new THREE.EdgesGeometry(boxGeo), new THREE.LineBasicMaterial({ color: COLORS.box }));
   boxEdges.position.copy(center);
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(xMax - xMin, zMax - zMin),
-    new THREE.MeshBasicMaterial({ color: 0xdee2e6, transparent: true, opacity: 0.55, depthWrite: false }),
+    new THREE.MeshBasicMaterial({ color: COLORS.floor, transparent: true, opacity: 0.95, depthWrite: false }),
   );
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(center.x, 0.001, center.z);
@@ -241,7 +277,7 @@ export function buildScene(plan: TierPlan, tierName: string): SceneBuild {
   const tierLabel = createLabel(
     total > 0 ? `${tierName} • ${total} thiết bị` : `${tierName} • chưa có tài sản`,
     0.45,
-    'rgba(33,37,41,0.92)',
+    'rgba(52,58,64,0.95)',
   );
   tierLabel.position.set(xMin + tierLabel.scale.x / 2, yMax + 0.4, zMax);
   group.add(tierLabel);
@@ -260,6 +296,8 @@ export function buildScene(plan: TierPlan, tierName: string): SceneBuild {
       new THREE.MeshBasicMaterial({ color: COLORS.frame, transparent: true, opacity: 0.05, depthWrite: false }),
     );
     frameFill.position.copy(framePos);
+    frameFill.userData.baseOpacity = 0.05;
+    frames.push({ mesh: frameFill, line: line.name, nodeId: line.nodeId, plan: line });
     const frameEdges = new THREE.LineSegments(new THREE.EdgesGeometry(frameGeo), new THREE.LineBasicMaterial({ color: COLORS.frame }));
     frameEdges.position.copy(framePos);
 
@@ -307,5 +345,13 @@ export function buildScene(plan: TierPlan, tierName: string): SceneBuild {
   });
 
   const bounds = new THREE.Box3(new THREE.Vector3(xMin, 0, zMin), new THREE.Vector3(xMax, yMax + 0.8, zMax));
-  return { group, pickables, fillsByAsset, assetByMesh, bounds };
+  const marker = new THREE.Mesh(
+    new THREE.BoxGeometry(0.06, 1.9, 1),
+    new THREE.MeshBasicMaterial({ color: 0x2f9e44, transparent: true, opacity: 0.85, depthTest: false }),
+  );
+  marker.visible = false;
+  marker.renderOrder = 10;
+  group.add(marker);
+
+  return { group, frames, pickables, fillsByAsset, assetByMesh, bounds, marker };
 }

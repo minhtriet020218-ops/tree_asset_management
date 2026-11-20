@@ -1,5 +1,5 @@
 import type { Asset } from '../../types/asset.types';
-import { isMonitor, isPrinter, isShowMonitor, isTowerPc } from './assetUtils';
+import { isMonitor, isPrinter, isShowMonitor, isStock, isTowerPc } from './assetUtils';
 
 /** monitor: màn hình thường | show: "monitor show up" (tấm hiển thị dọc ở đầu line) | pc: PC vuông (kiểu HP G3)
  *  tower: PC to hình chữ nhật đứng | printer: máy in Zebra */
@@ -63,6 +63,7 @@ export interface Placed {
   asset: Asset;
   kind: Kind;
   x: number; // tâm theo trục line (0 = đầu line)
+  key: number; // khóa thứ tự trong line (line_order, hoặc thứ hạng theo tên nếu chưa có)
   dz?: number; // lệch ra phía trước so với dãy thiết bị (máy in đặt phía trước)
 }
 export interface Wire {
@@ -75,6 +76,7 @@ export interface LinePlan {
   wires: Wire[];
   length: number;
   bar: 'back' | 'front';
+  nodeId: number | null; // node (tầng/khu vực) mà đa số thiết bị trong line đang thuộc về, dùng khi biên chế thêm thiết bị vào line
   x0: number; // vị trí thế giới của x = 0 của line
   z: number; // vị trí thế giới của dãy thiết bị
   zBack: number; // mép sau / mép trước của khung line (tương đối so với z)
@@ -90,7 +92,28 @@ export interface TierPlan {
 
 const label = (a: Asset) => a.hostname || a.it_asset_code || String(a.id);
 const byName = (a: Asset, b: Asset) => label(a).localeCompare(label(b), undefined, { numeric: true });
+
+/** Khóa thứ tự trong line: line_order do IT kéo thả đặt; chưa có thì dùng thứ hạng theo tên (1, 2, 3...). */
+function orderKeys(list: Asset[]): Map<number, number> {
+  const keys = new Map<number, number>();
+  [...list].sort(byName).forEach((a, i) => keys.set(a.id, a.line_order != null && Number.isFinite(Number(a.line_order)) ? Number(a.line_order) : i + 1));
+  return keys;
+}
 const natural = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
+
+function majorityNode(list: Asset[]): number | null {
+  const count = new Map<number, number>();
+  for (const a of list) if (a.node_id != null) count.set(a.node_id, (count.get(a.node_id) ?? 0) + 1);
+  let best: number | null = null;
+  let bestN = 0;
+  for (const [id, n] of count) {
+    if (n > bestN) {
+      best = id;
+      bestN = n;
+    }
+  }
+  return best;
+}
 
 /**
  * Xếp 1 line từ trái sang phải theo bản vẽ:
@@ -102,7 +125,9 @@ const natural = (a: string, b: string) => a.localeCompare(b, undefined, { numeri
  * Chỉ tính toán vị trí trong line (x tính từ đầu line); x0, z do buildTierPlan gán.
  */
 export function buildLinePlan(name: string, lineAssets: Asset[], spec: Omit<LineSpec, 'col' | 'z'> = AUTO_SPEC): LinePlan {
-  const sorted = [...lineAssets].sort(byName);
+  const keys = orderKeys(lineAssets);
+  const keyOf = (a: Asset) => keys.get(a.id) ?? 0;
+  const sorted = [...lineAssets].sort((a, b) => keyOf(a) - keyOf(b) || byName(a, b));
   const monitors = sorted.filter(isMonitor);
   const printers = sorted.filter((a) => !isMonitor(a) && isPrinter(a));
   const pcs = sorted.filter((a) => !isMonitor(a) && !isPrinter(a));
@@ -129,7 +154,7 @@ export function buildLinePlan(name: string, lineAssets: Asset[], spec: Omit<Line
     cursor += gapBefore;
     gapBefore = SCENE.itemGap;
     const w = SIZE[kind].w;
-    items.push({ asset, kind, x: cursor + w / 2 });
+    items.push({ asset, kind, x: cursor + w / 2, key: keyOf(asset) });
     cursor += w;
   };
   const section = (gap: number): void => {
@@ -187,7 +212,7 @@ export function buildLinePlan(name: string, lineAssets: Asset[], spec: Omit<Line
     let px = items.length > 0 ? items[0].x - SIZE[items[0].kind].w / 2 : 0;
     for (const p of printers) {
       const w = SIZE.printer.w;
-      items.push({ asset: p, kind: 'printer', x: px + w / 2, dz: SCENE.frontPrinterZ });
+      items.push({ asset: p, kind: 'printer', x: px + w / 2, key: keyOf(p), dz: SCENE.frontPrinterZ });
       px += w + SCENE.itemGap;
     }
     cursor = Math.max(cursor, px - SCENE.itemGap);
@@ -199,6 +224,7 @@ export function buildLinePlan(name: string, lineAssets: Asset[], spec: Omit<Line
     wires,
     length: items.length > 0 ? cursor : 0,
     bar: spec.bar,
+    nodeId: majorityNode(lineAssets),
     x0: 0,
     z: 0,
     zBack: -SCENE.frameDepth / 2,
@@ -209,8 +235,9 @@ export function buildLinePlan(name: string, lineAssets: Asset[], spec: Omit<Line
 /** Gom tài sản theo line, xếp từng line vào vị trí trên mặt bằng (LINE_LAYOUT), tránh chồng khung. */
 export function buildTierPlan(assets: Asset[], layout: Record<string, LineSpec> = LINE_LAYOUT): TierPlan {
   const groups = new Map<string, Asset[]>();
-  for (const a of assets) {
-    const key = a.production_line?.trim() || 'Line Mặc Định';
+  // Thiết bị trong Kho không thuộc line nào: chỉ hiện ở thanh Kho bên phải, không vẽ trong khung line
+  for (const a of assets.filter((x) => !isStock(x))) {
+    const key = (a.production_line ?? '').trim();
     groups.set(key, [...(groups.get(key) ?? []), a]);
   }
   const names = [...groups.keys()].sort(natural);
@@ -280,4 +307,31 @@ export function buildTierPlan(assets: Asset[], layout: Record<string, LineSpec> 
     zMin: Math.min(...lines.map((l) => l.z + l.zBack)),
     zMax: Math.max(...lines.map((l) => l.z + l.zFront)),
   };
+}
+
+/** Nhóm thiết bị cùng loại cạnh tranh vị trí với nhau: PC xếp với PC, màn hình với màn hình, máy in với máy in. */
+const classOf = (k: Kind): 'pc' | 'mon' | 'printer' => (k === 'printer' ? 'printer' : k === 'pc' || k === 'tower' ? 'pc' : 'mon');
+const kindOfAsset = (a: Asset): Kind => (isMonitor(a) ? (isShowMonitor(a) ? 'show' : 'monitor') : isPrinter(a) ? 'printer' : isTowerPc(a) ? 'tower' : 'pc');
+
+export interface InsertionPoint {
+  order: number; // giá trị line_order để lưu cho thiết bị được thả
+  markerX: number; // vị trí (tính từ đầu line) để vẽ vạch báo "sẽ đứng ở đây"
+}
+
+/**
+ * Thả `dragged` tại vị trí xLocal (tính từ đầu line) thì đứng ở đâu trong line?
+ * Đứng giữa 2 thiết bị cùng nhóm gần nhất theo trục X: order = trung bình khóa của 2 thiết bị đó.
+ * Thiết bị đang kéo (nếu đã nằm trong line này) không tính, nên kéo trong cùng line chỉ là đổi chỗ.
+ */
+export function insertionPoint(plan: LinePlan, dragged: Asset, xLocal: number): InsertionPoint {
+  const cls = classOf(kindOfAsset(dragged));
+  const peers = plan.items.filter((it) => it.asset.id !== dragged.id && classOf(it.kind) === cls).sort((a, b) => a.x - b.x);
+  const idx = peers.filter((it) => it.x < xLocal).length;
+  const prev = peers[idx - 1];
+  const next = peers[idx];
+  const edge = (it: Placed, side: 1 | -1) => it.x + (side * SIZE[it.kind].w) / 2;
+  if (prev && next) return { order: (prev.key + next.key) / 2, markerX: (edge(prev, 1) + edge(next, -1)) / 2 };
+  if (prev) return { order: prev.key + 1, markerX: edge(prev, 1) + SCENE.itemGap / 2 };
+  if (next) return { order: next.key - 1, markerX: edge(next, -1) - SCENE.itemGap / 2 };
+  return { order: 1, markerX: plan.length / 2 };
 }

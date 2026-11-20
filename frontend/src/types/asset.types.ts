@@ -5,7 +5,11 @@ export interface Asset {
   hostname: string | null;
   category: string;
   product: string;
-  production_line: string;
+  production_line: string | null;
+  /** true = đang trong Kho (thiếu node hoặc Line). Server tự tính, xem backend/sql/006_stock_assignment.sql */
+  in_stock?: boolean;
+  /** Thứ tự trong line (nhỏ = đứng trước, bên trái). null = xếp theo tên */
+  line_order?: number | null;
   finance_asset_code: string;
   po_invoice: string;
   serial_number: string;

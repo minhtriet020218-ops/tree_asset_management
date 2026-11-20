@@ -22,6 +22,16 @@ function App() {
     }
   };
 
+  // Tải lại danh sách tài sản của tầng đang xem (sau khi biên chế thiết bị từ Kho vào line)
+  const refreshAssets = async () => {
+    if (!selectedTier) return;
+    try {
+      setAssets(await assetService.getAssets(selectedTier.id));
+    } catch (error) {
+      console.error("Lỗi khi tải lại danh sách tài sản:", error);
+    }
+  };
+
   const handleAddAsset = async (newAsset: Partial<Asset>) => {
     try {
       const created = await assetService.createAsset({ ...newAsset, node_id: selectedTier?.id });
@@ -81,6 +91,7 @@ function App() {
               assets={assets}
               onBack={() => setCurrentView('3d-tree')}
               onOpenInventory={() => setCurrentView('inventory')}
+              onAssetsChanged={refreshAssets}
             />
           </div>
         ) : (

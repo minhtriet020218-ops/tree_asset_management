@@ -2,11 +2,6 @@ const ActiveDirectory = require('activedirectory2');
 const env = require('../config/env');
 const assetRepository = require('../repositories/assetRepository');
 
-const ATTRIBUTES = [
-  'cn', 'dNSHostName', 'operatingSystem', 'description',
-  'lastLogonTimestamp', 'userAccountControl',
-];
-
 // AD trả lastLogonTimestamp dạng FILETIME (số lần 100ns kể từ 1601-01-01) hoặc đã parse sẵn thành Date
 function toDate(value) {
   if (!value) return null;
@@ -33,16 +28,21 @@ class ADSyncService {
     });
   }
 
+  /**
+   * Lấy toàn bộ máy tính (computer account) trong domain.
+   * activedirectory2 không có findComputers: dùng find(), máy tính nằm trong results.other
+   * (thư viện loại computer khỏi users / groups). find mặc định scope = 'base' nên phải đặt 'sub' để quét cả cây.
+   * Không chỉ định attributes: mặc định lấy hết (có cn, operatingSystem, lastLogonTimestamp, userAccountControl...).
+   * Phân trang tự động (pageSize 1000) nên domain hơn 1000 máy vẫn lấy đủ.
+   */
   fetchComputers() {
     const ad = this._client();
     return new Promise((resolve, reject) => {
-      ad.findComputers(
-        { filter: '(objectCategory=computer)', attributes: ATTRIBUTES, paged: true },
-        (err, computers) => {
-          if (err) return reject(err);
-          resolve(computers || []);
-        }
-      );
+      ad.find({ filter: '(objectCategory=computer)', scope: 'sub', timeLimit: 120 }, (err, results) => {
+        if (err) return reject(err);
+        // bộ lọc đã chỉ lấy computer, nên gộp cả 3 nhóm để không sót nếu thư viện phân loại khác đi
+        resolve([...(results?.other || []), ...(results?.users || []), ...(results?.groups || [])]);
+      });
     });
   }
 

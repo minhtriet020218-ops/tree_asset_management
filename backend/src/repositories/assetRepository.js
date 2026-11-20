@@ -42,6 +42,88 @@ class AssetRepository {
     return result.rows;
   }
 
+  async findById(id) {
+    const result = await db.query('SELECT * FROM assets WHERE id = $1::bigint AND liquidated_at IS NULL', [id]);
+    return result.rows[0];
+  }
+
+  async nodeExists(nodeId) {
+    const result = await db.query('SELECT 1 FROM tree_nodes WHERE id = $1::bigint', [nodeId]);
+    return result.rowCount > 0;
+  }
+
+  /**
+   * Chuẩn hóa tên line theo cách viết ĐANG DÙNG nhiều nhất ("line 1" / "LINE 1" -> "Line 1"),
+   * để cùng 1 line không bị tách thành nhiều khung trên sơ đồ. Chưa có line nào trùng thì trả về null.
+   */
+  async canonicalLine(line) {
+    const result = await db.query(
+      `SELECT production_line FROM assets
+       WHERE liquidated_at IS NULL AND production_line IS NOT NULL
+         AND lower(regexp_replace(btrim(production_line), '\\s+', ' ', 'g')) = lower($1::text)
+       GROUP BY production_line
+       ORDER BY COUNT(*) DESC, production_line
+       LIMIT 1`,
+      [line]
+    );
+    return result.rows[0] ? result.rows[0].production_line : null;
+  }
+
+  /**
+   * KHO: thiết bị chưa biên chế vào line (cột in_stock tự tính: thiếu node_id hoặc production_line).
+   * Trả về tối đa `limit` thiết bị mới nhất kèm tổng số để giao diện hiện "N thiết bị".
+   */
+  async findStock({ search, limit = 100 } = {}) {
+    const params = [];
+    let where = 'WHERE liquidated_at IS NULL AND in_stock';
+    if (search) {
+      params.push(`%${search}%`);
+      where += ` AND (it_asset_code ILIKE $1 OR hostname ILIKE $1 OR serial_number ILIKE $1
+                      OR category ILIKE $1 OR product ILIKE $1 OR assigned_to ILIKE $1)`;
+    }
+    const [rows, total] = await Promise.all([
+      db.query(`SELECT * FROM assets ${where} ORDER BY id DESC LIMIT ${Number(limit)}`, params),
+      db.query(`SELECT COUNT(*)::int AS n FROM assets ${where}`, params),
+    ]);
+    return { items: rows.rows, total: total.rows[0].n };
+  }
+
+  /**
+   * Biên chế / di chuyển / trả về kho: đặt lại node + line (+ PC mà màn hình gắn vào + vị trí trong line).
+   * line = null nghĩa là trả về kho. lineOrder = null: xếp theo tên.
+   * Thiết bị chưa có hostname được đặt tên ngay lúc biên chế (hostname do hostnameService sinh) và tắt cảnh báo
+   * offline `graceDays` ngày để IT kịp đổi tên máy thật.
+   * PC chuyển sang line khác thì các màn hình đang gắn vào nó đi cùng (cùng node + line, giữ nguyên dây).
+   * PC trả về kho thì các màn hình đang gắn vào nó được tách ra, ở lại trong line.
+   */
+  async place(id, { nodeId, line, parentId, hostname, lineOrder = null, graceDays = 0 }) {
+    const result = await db.query(
+      `UPDATE assets SET
+         node_id            = $2::bigint,
+         production_line    = $3::text,
+         parent_asset_id    = $4::bigint,
+         line_order         = $7::double precision,
+         hostname           = COALESCE(hostname, $5::text),
+         alerts_muted_until = CASE WHEN hostname IS NULL AND $5::text IS NOT NULL AND $6::int > 0
+                                   THEN NOW() + make_interval(days => $6::int) ELSE alerts_muted_until END
+       WHERE id = $1::bigint AND liquidated_at IS NULL
+       RETURNING *;`,
+      [id, nodeId, line, parentId, hostname, graceDays, lineOrder]
+    );
+    const row = result.rows[0];
+    if (row && !line) {
+      await db.query('UPDATE assets SET parent_asset_id = NULL WHERE parent_asset_id = $1::bigint', [id]);
+    } else if (row) {
+      await db.query(
+        `UPDATE assets SET node_id = $2::bigint, production_line = $3::text
+         WHERE parent_asset_id = $1::bigint AND liquidated_at IS NULL
+           AND (node_id IS DISTINCT FROM $2::bigint OR production_line IS DISTINCT FROM $3::text)`,
+        [id, nodeId, line]
+      );
+    }
+    return row;
+  }
+
   /**
    * Tạo mới. status KHÔNG nhận từ form: chỉ probe mới quyết định online/offline.
    * - Monitor kế thừa trạng thái của PC nó gắn vào; thiết bị khác bắt đầu 'offline' tới lượt probe đầu tiên.

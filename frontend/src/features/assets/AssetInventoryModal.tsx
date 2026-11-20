@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { TreeNode, Asset, AssetMeta } from '../../types/asset.types';
 import { assetService } from '../../services/assetService';
-import { isMonitor, isMuted } from './assetUtils';
+import { isMonitor, isMuted, isStock } from './assetUtils';
 import { AssetMaintenanceModal } from './assetMaintenanceModal';
 
 interface AssetInventoryProps {
@@ -292,7 +292,12 @@ export const AssetInventoryModal: React.FC<AssetInventoryProps> = ({
                     <td className="fw-bold text-dark">{asset.hostname || '—'}</td>
                     <td>{asset.category}</td>
                     <td>{asset.product}</td>
-                    <td><span className="badge bg-secondary">{asset.production_line}</span></td>
+                    <td>
+                      {isStock(asset) && (
+                        <span className="badge bg-warning text-dark me-1" title="Chưa biên chế vào line: đang nằm trong Kho">Kho</span>
+                      )}
+                      {asset.production_line && <span className="badge bg-secondary">{asset.production_line}</span>}
+                    </td>
                     <td><span className="font-monospace">{asset.finance_asset_code}</span></td>
                     <td><span className="font-monospace">{asset.po_invoice}</span></td>
                     <td><span className="font-monospace text-success">{asset.serial_number}</span></td>
@@ -370,7 +375,7 @@ export const AssetInventoryModal: React.FC<AssetInventoryProps> = ({
                     />
                   </div>
 
-                  {textField('Production Line', 'production_line', { list: 'dl-lines' })}
+                  {textField('Production Line', 'production_line', { list: 'dl-lines', placeholder: 'Điền Line để vào thẳng line · để trống = vào Kho' })}
                   {textField('MAC Address', 'mac_address')}
 
                   {formIsMonitor && (

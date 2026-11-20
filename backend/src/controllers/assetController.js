@@ -22,6 +22,25 @@ exports.getAssets = async (req, res) => {
   }
 };
 
+exports.getStock = async (req, res) => {
+  try {
+    const { search, limit } = req.query;
+    res.json({ success: true, data: await assetService.getStock(search, limit) });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+exports.placeAsset = async (req, res) => {
+  try {
+    const data = await assetService.placeAsset(req.params.id, req.body || {});
+    if (!data) return res.status(404).json({ success: false, message: 'Không tìm thấy tài sản' });
+    res.json({ success: true, data });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
 exports.getMeta = async (req, res) => {
   try {
     res.json({ success: true, data: await assetService.getMeta() });

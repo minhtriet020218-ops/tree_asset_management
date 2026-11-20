@@ -1,9 +1,9 @@
-// Chạy: node --test backend/test   (không cần database: db/env/repository được giả lập)
+// Chạy: node --test src/test   (không cần database: db/env/repository được giả lập)
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-const src = (p) => path.join(__dirname, '..', 'src', p);
+const src = (p) => path.join(__dirname, '..', p); // file này nằm trong backend/src/test/
 
 // ----- giả lập module -----
 let queries = [];
@@ -107,6 +107,8 @@ test('createAsset: Monitor không sinh hostname', async () => {
   assert.ok(!created[0].d.hostname);
 });
 
-test('createAsset: PC không có node_id -> 400', async () => {
-  await assert.rejects(assetService.createAsset({ category: 'PC' }), (e) => e.status === 400);
+test('createAsset: PC chưa có node_id (hàng mới về Kho) -> không lỗi, chưa sinh hostname', async () => {
+  created.length = 0;
+  await assetService.createAsset({ category: 'PC' });
+  assert.ok(!created[0].d.hostname); // hostname sẽ được đặt khi thiết bị được biên chế vào line
 });

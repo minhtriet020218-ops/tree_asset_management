@@ -10,6 +10,27 @@ export interface ExportAssetsParams {
   includeChildren?: boolean;
 }
 
+export interface StockResult {
+  items: Asset[];
+  total: number;
+}
+
+/** Vị trí của thiết bị: có đủ node + production_line = đã vào line; production_line null = trả về Kho */
+export interface Placement {
+  node_id: number | null;
+  production_line: string | null;
+  /** Chỉ cho màn hình: gắn vào PC này (PC phải nằm trong cùng line) */
+  parent_asset_id?: number | null;
+  /** Thứ tự trong line (nhỏ = bên trái). null = xếp theo tên */
+  line_order?: number | null;
+}
+
+/** Lấy câu thông báo tiếng Việt mà server trả về (nếu có) */
+export function apiErrorMessage(error: unknown, fallback = 'Có lỗi xảy ra, vui lòng thử lại.'): string {
+  if (axios.isAxiosError(error) && typeof error.response?.data?.message === 'string') return error.response.data.message;
+  return fallback;
+}
+
 const pad = (n: number) => String(n).padStart(2, '0');
 
 function fallbackFilename(): string {
@@ -54,6 +75,20 @@ export const assetService = {
     const response = await apiClient.get<{ success: boolean; data: Asset[] }>('/assets', {
       params: { node_id: nodeId, status, search },
     });
+    return response.data.data;
+  },
+
+  /** Kho: thiết bị chưa biên chế vào line (tối đa `limit` cái mới nhất + tổng số) */
+  getStock: async (search?: string, limit = 100): Promise<StockResult> => {
+    const response = await apiClient.get<{ success: boolean; data: StockResult }>('/assets/stock', {
+      params: { search: search || undefined, limit },
+    });
+    return response.data.data;
+  },
+
+  /** Biên chế thiết bị vào line, hoặc trả về Kho (production_line = null) */
+  placeAsset: async (id: number, placement: Placement): Promise<Asset> => {
+    const response = await apiClient.patch<{ success: boolean; data: Asset }>(`/assets/${id}/placement`, placement);
     return response.data.data;
   },
 
