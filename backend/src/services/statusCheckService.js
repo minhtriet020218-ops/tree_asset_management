@@ -86,7 +86,8 @@ class StatusCheckService {
     await assetRepository.syncChildStatus(); // monitor đi theo trạng thái PC
     const reachable = results.filter((r) => r.ok).length;
     console.log(`Kiểm tra trạng thái: ${assets.length} thiết bị, phản hồi ${reachable}, không phản hồi ${assets.length - reachable}.`);
-    return { checked: assets.length, reachable, online, offline };
+    const skipped = await assetRepository.countStale();
+    return { checked: assets.length, reachable, online, offline, skipped };
   }
 }
 

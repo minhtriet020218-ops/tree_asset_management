@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const env = require('../config/env');
+const { staleCondition } = require('../config/staleRule');
 
 const cfg = env.alerts;
 const MAX_LISTED = 25; // tối đa số máy liệt kê trong 1 tin, phần còn lại ghi "và N thiết bị khác"
@@ -11,7 +12,8 @@ const ALERTABLE = `
   AND NOT a.is_demo
   AND a.liquidated_at IS NULL
   AND (a.alerts_muted_until IS NULL OR a.alerts_muted_until <= NOW())
-  AND a.ad_enabled IS DISTINCT FROM FALSE`;
+  AND a.ad_enabled IS DISTINCT FROM FALSE
+  AND NOT ${staleCondition('a')}`;
 
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

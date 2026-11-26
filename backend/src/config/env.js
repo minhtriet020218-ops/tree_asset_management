@@ -33,6 +33,10 @@ module.exports = {
     password: process.env.AD_SERVICE_PASSWORD,
     defaultNodeId: process.env.AD_DEFAULT_NODE_ID ? num(process.env.AD_DEFAULT_NODE_ID, null) : null,
     syncOnStart: process.env.AD_SYNC_ON_START === 'true',
+    // ldaps:// mà Node không tin chứng chỉ của DC: AD_CA_FILE = đường dẫn file .pem của CA nội bộ (nên dùng).
+    // AD_TLS_INSECURE=true bỏ qua kiểm tra chứng chỉ (chỉ để thử, không dùng khi chạy thật).
+    caFile: (process.env.AD_CA_FILE || '').trim() || null,
+    tlsInsecure: process.env.AD_TLS_INSECURE === 'true',
   },
   schedule: {
     adSync: process.env.SYNC_AD_CRON || '0 2 * * *',
@@ -45,6 +49,8 @@ module.exports = {
     concurrency: num(process.env.PROBE_CONCURRENCY, 100),
     offlineAfterFails: Math.max(1, num(process.env.OFFLINE_AFTER_FAILS, 2)),
     dnsSuffix: (process.env.HOST_DNS_SUFFIX || '').replace(/^\./, ''),
+    // máy AD không đăng nhập quá N ngày (và chưa vào line nào) bị bỏ qua khi kiểm tra / cảnh báo; 0 = chỉ bỏ máy bị vô hiệu hóa
+    staleDays: Math.max(0, num(process.env.AD_STALE_DAYS, 90)),
     dnsConcurrency: Math.max(1, num(process.env.DNS_CONCURRENCY, 3)),
     dnsTimeoutMs: num(process.env.DNS_TIMEOUT_MS, 3000),
   },

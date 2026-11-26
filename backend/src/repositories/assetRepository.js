@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { staleCondition } = require('../config/staleRule');
 
 const CHUNK = 1000;
 
@@ -213,6 +214,7 @@ class AssetRepository {
        FROM assets
        WHERE COALESCE(category, '') NOT ILIKE '%monitor%'
          AND liquidated_at IS NULL
+         AND NOT ${staleCondition('')}
        GROUP BY status;`
     );
     return result.rows;
@@ -278,9 +280,20 @@ class AssetRepository {
       `SELECT id, hostname FROM assets
        WHERE hostname IS NOT NULL AND hostname <> ''
          AND NOT is_demo            -- bỏ qua máy dữ liệu mẫu
-         AND liquidated_at IS NULL` // và máy đã thanh lý
+         AND liquidated_at IS NULL  -- và máy đã thanh lý
+         AND NOT ${staleCondition('')}` // và máy AD cũ / bị vô hiệu
     );
     return result.rows;
+  }
+
+  // Số máy bị bỏ qua vì là máy AD cũ / bị vô hiệu (không kiểm tra mạng, không cảnh báo)
+  async countStale() {
+    const result = await db.query(
+      `SELECT COUNT(*)::int AS n FROM assets
+       WHERE hostname IS NOT NULL AND hostname <> '' AND NOT is_demo AND liquidated_at IS NULL
+         AND ${staleCondition('')}`
+    );
+    return result.rows[0].n;
   }
 
   async applyStatusResults(results, offlineAfterFails) {

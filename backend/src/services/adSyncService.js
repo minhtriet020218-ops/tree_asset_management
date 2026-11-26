@@ -1,3 +1,4 @@
+const fs = require('fs');
 const ActiveDirectory = require('activedirectory2');
 const env = require('../config/env');
 const assetRepository = require('../repositories/assetRepository');
@@ -15,35 +16,77 @@ function toDate(value) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+// Phải nêu rõ các trường cần lấy: nếu không, thư viện chỉ trả vài trường mặc định (có userAccountControl nhưng
+// KHÔNG có operatingSystem, lastLogonTimestamp).
+const COMPUTER_ATTRIBUTES = ['cn', 'dNSHostName', 'operatingSystem', 'description', 'lastLogonTimestamp', 'userAccountControl'];
+const COMPUTER = '(objectCategory=computer)';
+const PAGE_LIMIT = 1000; // AD trả tối đa chừng này kết quả cho mỗi truy vấn
+const PREFIX_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789-_'.split('');
+const MAX_PREFIX_LEN = 10;
+
+/**
+ * Lấy hết kết quả của `search(filter)` dù AD giới hạn 1000 / truy vấn: chia theo tiền tố tên máy (cn).
+ * Các nhánh không giao nhau: cn=<tiền tố><ký tự>* cho từng ký tự, cộng một nhánh "phần còn lại"
+ * (tên đúng bằng tiền tố hoặc chứa ký tự lạ như khoảng trắng, dấu chấm).
+ */
+async function collectComputers(search, prefix = '') {
+  const filter = prefix ? `(&${COMPUTER}(cn=${prefix}*))` : COMPUTER;
+  const rows = await search(filter);
+  if (rows.length < PAGE_LIMIT) return rows;
+  if (prefix.length >= MAX_PREFIX_LEN) {
+    console.warn(`AD: tiền tố "${prefix}" còn ${rows.length} máy, không chia nhỏ thêm được: có thể thiếu máy.`);
+    return rows;
+  }
+  const out = [];
+  for (const c of PREFIX_ALPHABET) out.push(...(await collectComputers(search, prefix + c)));
+  const covered = PREFIX_ALPHABET.map((c) => `(cn=${prefix}${c}*)`).join('');
+  const rest = await search(`(&${COMPUTER}(cn=${prefix}*)(!(|${covered})))`);
+  if (rest.length >= PAGE_LIMIT) console.warn(`AD: nhánh còn lại của tiền tố "${prefix}" đạt ${rest.length} máy: có thể thiếu máy.`);
+  out.push(...rest);
+  return out;
+}
+
 // userAccountControl bit 2 (0x2) = ACCOUNTDISABLE
 const isEnabled = (uac) => !(Number(uac) & 2);
 
 class ADSyncService {
   _client() {
-    return new ActiveDirectory({
+    const options = {
       url: env.ad.url,
       baseDN: env.ad.baseDN,
       username: env.ad.username,
       password: env.ad.password,
-    });
+    };
+    // Chứng chỉ LDAPS của DC do CA nội bộ cấp: Node mặc định không tin. Cho thêm CA, hoặc (chỉ để thử) bỏ kiểm tra.
+    if (/^ldaps:/i.test(env.ad.url || '')) {
+      const tlsOptions = {};
+      if (env.ad.caFile) tlsOptions.ca = [fs.readFileSync(env.ad.caFile)];
+      if (env.ad.tlsInsecure) tlsOptions.rejectUnauthorized = false;
+      if (Object.keys(tlsOptions).length) options.tlsOptions = tlsOptions;
+    }
+    return new ActiveDirectory(options);
   }
 
   /**
    * Lấy toàn bộ máy tính (computer account) trong domain.
    * activedirectory2 không có findComputers: dùng find(), máy tính nằm trong results.other
    * (thư viện loại computer khỏi users / groups). find mặc định scope = 'base' nên phải đặt 'sub' để quét cả cây.
-   * Không chỉ định attributes: mặc định lấy hết (có cn, operatingSystem, lastLogonTimestamp, userAccountControl...).
-   * Phân trang tự động (pageSize 1000) nên domain hơn 1000 máy vẫn lấy đủ.
+   *
+   * AD chỉ trả tối đa 1000 kết quả mỗi truy vấn và phân trang của thư viện không đủ tin cậy, nên nếu một truy vấn
+   * trả đủ 1000 thì tách nhỏ theo chữ cái đầu của tên máy (cn=a*, cn=b*, ...) cho tới khi mỗi truy vấn < 1000.
+   * Domain nhỏ (< 1000 máy) vẫn chỉ tốn đúng 1 truy vấn như trước.
    */
-  fetchComputers() {
+  async fetchComputers() {
     const ad = this._client();
-    return new Promise((resolve, reject) => {
-      ad.find({ filter: '(objectCategory=computer)', scope: 'sub', timeLimit: 120 }, (err, results) => {
-        if (err) return reject(err);
-        // bộ lọc đã chỉ lấy computer, nên gộp cả 3 nhóm để không sót nếu thư viện phân loại khác đi
-        resolve([...(results?.other || []), ...(results?.users || []), ...(results?.groups || [])]);
+    const search = (filter) =>
+      new Promise((resolve, reject) => {
+        ad.find({ filter, scope: 'sub', timeLimit: 120, attributes: COMPUTER_ATTRIBUTES }, (err, results) => {
+          if (err) return reject(err);
+          // bộ lọc đã chỉ lấy computer, nên gộp cả 3 nhóm để không sót nếu thư viện phân loại khác đi
+          resolve([...(results?.other || []), ...(results?.users || []), ...(results?.groups || [])]);
+        });
       });
-    });
+    return collectComputers(search);
   }
 
   async syncComputersToDatabase() {
@@ -81,3 +124,4 @@ class ADSyncService {
 }
 
 module.exports = new ADSyncService();
+module.exports.collectComputers = collectComputers; // để kiểm thử
